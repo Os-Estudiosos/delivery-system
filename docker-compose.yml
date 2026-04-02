@@ -1,0 +1,47 @@
+services:
+    api:
+        build:
+            context: .
+            dockerfile: Dockerfile.dev
+        container_name: fastapi
+        depends_on:
+            - postgres
+            - dynamodb
+        ports:
+            - "8000:8000"
+        volumes:
+            - .:/app
+        env_file:
+            - .env.development
+
+    postgres:
+        image: postgres:16
+        container_name: postgres_db
+        environment:
+            POSTGRES_USER: postgres
+            POSTGRES_PASSWORD: postgres
+            POSTGRES_DB: dijkfood
+        ports:
+            - "5432:5432"
+        volumes:
+            - postgres_data:/var/lib/postgresql/data
+    
+    dynamodb:
+        image: amazon/dynamodb-local
+        container_name: dynamodb
+        ports:
+            - "8001:8000"
+        command: "-jar DynamoDBLocal.jar -sharedDb"
+    
+    dynamodb-admin:
+        image: aaronshaf/dynamodb-admin
+        container_name: dynamodb_admin
+        ports:
+            - "8002:8001"
+        environment:
+            - DYNAMO_ENDPOINT=http://dynamodb:8000
+        depends_on:
+            - dynamodb
+
+volumes:
+    postgres_data:
