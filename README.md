@@ -1,2 +1,2 @@
-# CN-Trabalho
-Repositório do trabalho de Computação em Numve
+# Sistema de Delivery (DijkFood)
+Repositório do trabalho de Computação em Nuvem
