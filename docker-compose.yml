@@ -11,8 +11,9 @@ services:
             - "8000:8000"
         volumes:
             - .:/app
+            - /app/.venv
         env_file:
-            - .env.development
+            - .env
 
     postgres:
         image: postgres:16
