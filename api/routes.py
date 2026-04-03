@@ -1,5 +1,5 @@
-from fastapi import FastAPI
-from routes.models import (
+from fastapi import FastAPI, Depends, HTTPException
+from api.models import (
     UsuarioCreate, UsuarioResponse,
     CourierCreate, CourierResponse,
     PedidoCreate, PedidoResponse,
@@ -23,6 +23,18 @@ def post_user(user:UsuarioCreate):
 
 @app.post("/restaurant", response_model=RestauranteResponse)
 def post_restaurant(restaurant: RestauranteCreate):
+    # db_restaurant = Restaurante(
+    #     nome=restaurant.nome,
+    #     lat=restaurant.lat,
+    #     lon=restaurant.lon,
+    #     kitchen_type_id=restaurant.kitchen_type_id
+    # )
+
+    # db.add(db_restaurant)
+    # db.commit()
+    # db.refresh(db_restaurant)
+
+    # return db_restaurant
     pass
 
 
@@ -47,12 +59,21 @@ def patch_delivery_status(delivery_id: int):
 
 
 @app.get("/user/{user_id}/order/{order_id}", response_model=PedidoResponse)
-def get_user_order(user_id: int, order_id: int):
+def get_user_order(user_email: str, order_id: int):
+    # pedido = db.query(Pedido).filter(
+    #     Pedido.id == order_id,
+    #     Pedido.user_email == user_email
+    # ).first()
+
+    # if not pedido:
+    #     raise HTTPException(status_code=404, detail="Pedido não encontrado")
+
+    # return pedido
     pass
 
 
 @app.get("/user/{user_id}/order", response_model=list[PedidoResponse])
-def get_user_orders(user_id: int):
+def get_user_orders(user_email: str):
     pass
 
 
