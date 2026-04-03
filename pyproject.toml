@@ -13,5 +13,6 @@ dependencies = [
     "osmnx>=2.1.0",
     "pandas>=3.0.2",
     "paramiko>=4.0.0",
+    "psycopg2-binary>=2.9",
     "sqlmodel>=0.0.37",
 ]
