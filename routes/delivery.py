@@ -1,10 +1,12 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from database.connection import get_session
-from database.models import Courier, Delivery, Order
+from database.models import Courier, Delivery, Event, Order, OrderStatus
 
 router = APIRouter(prefix='/delivery', tags=['delivery'])
 
@@ -33,6 +35,17 @@ class DeliveryResponse(BaseModel):
     id: int
     order: OrderReference
     courier: CourierReference
+
+
+class DeliveryStatusCreate(BaseModel):
+    status: OrderStatus
+
+
+class DeliveryStatusResponse(BaseModel):
+    id: int
+    status: OrderStatus
+    updated_at: datetime
+    delivery_id: int
 
 
 def _to_delivery_response(delivery: Delivery) -> DeliveryResponse:
@@ -78,6 +91,37 @@ def _get_courier_or_404(courier_id: int, session: Session) -> Courier:
         )
 
     return courier
+
+
+def _get_latest_delivery_status(delivery: Delivery) -> OrderStatus | None:
+    if not delivery.events:
+        return None
+
+    latest_event = max(delivery.events, key=lambda event: (event.updated_at, event.id))
+    return latest_event.status
+
+
+def _expected_next_status(current_status: OrderStatus | None) -> OrderStatus | None:
+    status_flow = {
+        None: OrderStatus.CONFIRMED,
+        OrderStatus.CONFIRMED: OrderStatus.PREPARING,
+        OrderStatus.PREPARING: OrderStatus.READY_FOR_PICKUP,
+        OrderStatus.READY_FOR_PICKUP: OrderStatus.PICKED_UP,
+        OrderStatus.PICKED_UP: OrderStatus.IN_TRANSIT,
+        OrderStatus.IN_TRANSIT: OrderStatus.DELIVERED,
+        OrderStatus.DELIVERED: None,
+    }
+
+    return status_flow[current_status]
+
+
+def _to_delivery_status_response(event: Event) -> DeliveryStatusResponse:
+    return DeliveryStatusResponse(
+        id=event.id,
+        status=event.status,
+        updated_at=event.updated_at,
+        delivery_id=event.delivery_id,
+    )
 
 
 @router.get('/', tags=['get deliveries'], response_model=list[DeliveryResponse])
@@ -138,3 +182,42 @@ def update_delivery(delivery_id: int, delivery: DeliveryUpdate, session: Session
 
     session.refresh(db_delivery)
     return _to_delivery_response(db_delivery)
+
+
+@router.patch('/{delivery_id}/status', tags=['update delivery status'], response_model=DeliveryStatusResponse, status_code=status.HTTP_201_CREATED)
+def update_delivery_status(delivery_id: int, payload: DeliveryStatusCreate, session: Session = Depends(get_session)):
+    db_delivery = _get_delivery_or_404(delivery_id, session)
+    current_status = _get_latest_delivery_status(db_delivery)
+    expected_status = _expected_next_status(current_status)
+
+    if expected_status is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail='Delivery already reached the final status.',
+        )
+
+    if payload.status != expected_status:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f'Invalid delivery status transition. Expected {expected_status.value}.',
+        )
+
+    db_event = Event(
+        status=payload.status,
+        updated_at=datetime.now(timezone.utc),
+        delivery=db_delivery,
+    )
+
+    session.add(db_event)
+
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail='Delivery status could not be updated due to a constraint violation.',
+        )
+
+    session.refresh(db_event)
+    return _to_delivery_status_response(db_event)

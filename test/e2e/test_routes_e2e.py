@@ -437,3 +437,194 @@ def test_delivery_crud_without_delete(client: TestClient) -> None:
 
     delete_response = client.delete(f"/delivery/{delivery_id}")
     assert delete_response.status_code == 405
+
+
+def test_delivery_status_flow_creates_events_in_order(client: TestClient) -> None:
+    kitchen = _create_kitchen(client, "Argentine")
+    restaurant = _create_restaurant(client, kitchen["id"], "Pampa")
+    user = _create_user(client, "status-flow@example.com")
+    item = _create_item(client, restaurant["id"], "Asado", 55.0)
+
+    order_response = client.post(
+        "/order/",
+        json={
+            "restaurant_id": restaurant["id"],
+            "user_id": user["id"],
+            "items": [{"item_id": item["id"], "quantity": 1}],
+        },
+    )
+    assert order_response.status_code == 201
+    order_id = order_response.json()["id"]
+
+    courier_response = client.post(
+        "/courier/",
+        json={
+            "name": "Status Courier",
+            "vehicle": "MOTORCYCLE",
+            "lat": -30.3,
+            "lon": -51.3,
+        },
+    )
+    assert courier_response.status_code == 201
+    courier_id = courier_response.json()["id"]
+
+    delivery_response = client.post(
+        "/delivery/",
+        json={"order_id": order_id, "courier_id": courier_id},
+    )
+    assert delivery_response.status_code == 201
+    delivery_id = delivery_response.json()["id"]
+
+    for expected_status in [
+        "CONFIRMED",
+        "PREPARING",
+        "READY_FOR_PICKUP",
+        "PICKED_UP",
+        "IN_TRANSIT",
+        "DELIVERED",
+    ]:
+        response = client.patch(
+            f"/delivery/{delivery_id}/status",
+            json={"status": expected_status},
+        )
+        assert response.status_code == 201
+        assert response.json()["status"] == expected_status
+        assert response.json()["delivery_id"] == delivery_id
+
+
+def test_delivery_status_flow_rejects_skipping_step(client: TestClient) -> None:
+    kitchen = _create_kitchen(client, "Venezuelan")
+    restaurant = _create_restaurant(client, kitchen["id"], "Caracas")
+    user = _create_user(client, "status-skip@example.com")
+    item = _create_item(client, restaurant["id"], "Arepa", 14.0)
+
+    order_response = client.post(
+        "/order/",
+        json={
+            "restaurant_id": restaurant["id"],
+            "user_id": user["id"],
+            "items": [{"item_id": item["id"], "quantity": 1}],
+        },
+    )
+    assert order_response.status_code == 201
+    order_id = order_response.json()["id"]
+
+    courier_response = client.post(
+        "/courier/",
+        json={
+            "name": "Skip Courier",
+            "vehicle": "BIKE",
+            "lat": -30.4,
+            "lon": -51.4,
+        },
+    )
+    assert courier_response.status_code == 201
+    courier_id = courier_response.json()["id"]
+
+    delivery_response = client.post(
+        "/delivery/",
+        json={"order_id": order_id, "courier_id": courier_id},
+    )
+    assert delivery_response.status_code == 201
+    delivery_id = delivery_response.json()["id"]
+
+    response = client.patch(
+        f"/delivery/{delivery_id}/status",
+        json={"status": "PREPARING"},
+    )
+
+    assert response.status_code == 409
+
+
+def test_order_events_with_delivery(client: TestClient) -> None:
+    kitchen = _create_kitchen(client, "Spanish")
+    restaurant = _create_restaurant(client, kitchen["id"], "Iberia")
+    user = _create_user(client, "events-user@example.com")
+    item = _create_item(client, restaurant["id"], "Paella", 48.0)
+
+    order_response = client.post(
+        "/order/",
+        json={
+            "restaurant_id": restaurant["id"],
+            "user_id": user["id"],
+            "items": [{"item_id": item["id"], "quantity": 1}],
+        },
+    )
+    assert order_response.status_code == 201
+    order_id = order_response.json()["id"]
+
+    courier_response = client.post(
+        "/courier/",
+        json={
+            "name": "Events Courier",
+            "vehicle": "BIKE",
+            "lat": -30.5,
+            "lon": -51.5,
+        },
+    )
+    assert courier_response.status_code == 201
+    courier_id = courier_response.json()["id"]
+
+    delivery_response = client.post(
+        "/delivery/",
+        json={"order_id": order_id, "courier_id": courier_id},
+    )
+    assert delivery_response.status_code == 201
+    delivery_id = delivery_response.json()["id"]
+
+    # Transition through states and collect event count
+    expected_statuses = [
+        "CONFIRMED",
+        "PREPARING",
+        "READY_FOR_PICKUP",
+        "PICKED_UP",
+        "IN_TRANSIT",
+        "DELIVERED",
+    ]
+
+    for expected_status in expected_statuses:
+        response = client.patch(
+            f"/delivery/{delivery_id}/status",
+            json={"status": expected_status},
+        )
+        assert response.status_code == 201
+
+    # Get events for order
+    events_response = client.get(f"/order/{order_id}/event")
+    assert events_response.status_code == 200
+    events = events_response.json()
+    assert len(events) == 6
+    assert events[0]["status"] == "DELIVERED"
+    assert events[5]["status"] == "CONFIRMED"
+    assert all("id" in event for event in events)
+    assert all("updated_at" in event for event in events)
+    assert all(event["delivery_id"] == delivery_id for event in events)
+
+
+def test_order_events_without_delivery(client: TestClient) -> None:
+    kitchen = _create_kitchen(client, "Portuguese")
+    restaurant = _create_restaurant(client, kitchen["id"], "Lisboa")
+    user = _create_user(client, "no-delivery@example.com")
+    item = _create_item(client, restaurant["id"], "Bacalao", 52.0)
+
+    order_response = client.post(
+        "/order/",
+        json={
+            "restaurant_id": restaurant["id"],
+            "user_id": user["id"],
+            "items": [{"item_id": item["id"], "quantity": 1}],
+        },
+    )
+    assert order_response.status_code == 201
+    order_id = order_response.json()["id"]
+
+    # Get events for order without delivery
+    events_response = client.get(f"/order/{order_id}/event")
+    assert events_response.status_code == 200
+    events = events_response.json()
+    assert events == []
+
+
+def test_order_events_404_for_missing_order(client: TestClient) -> None:
+    response = client.get("/order/999/event")
+    assert response.status_code == 404

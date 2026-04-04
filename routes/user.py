@@ -2,6 +2,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr
+from sqlalchemy import desc
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -122,7 +123,7 @@ def create_user(user: UserCreate, session: Session = Depends(get_session)):
 def get_user_orders(user_id: int, session: Session = Depends(get_session)):
     _get_user_or_404(user_id, session)
 
-    orders = session.query(Order).filter(Order.user_id == user_id).all()
+    orders = session.query(Order).filter(Order.user_id == user_id).order_by(desc(Order.created_at)).all()
     return [_to_user_order_response(order) for order in orders]
 
 

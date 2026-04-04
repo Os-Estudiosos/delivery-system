@@ -120,3 +120,8 @@ def delete_courier(courier_id: int, session: Session = Depends(get_session)):
 
     session.delete(db_courier)
     session.commit()
+
+
+@router.put('/{courier_id}/position', tags=['update courier position'])
+def update_courier_position(courier_id: int, session: Session = Depends(get_session)):
+    raise NotImplementedError()

@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from database.connection import get_session
-from database.models import Item, Order, OrderItem, Restaurant, User
+from database.models import Item, Order, OrderItem, OrderStatus, Restaurant, User
 
 router = APIRouter(prefix='/order', tags=['order'])
 
@@ -56,6 +56,13 @@ class OrderResponse(BaseModel):
     user: UserReference
     created_at: datetime
     items: list[OrderItemResponse]
+
+
+class OrderEventResponse(BaseModel):
+    id: int
+    status: OrderStatus
+    updated_at: datetime
+    delivery_id: int
 
 
 def _to_order_response(order: Order) -> OrderResponse:
@@ -143,6 +150,15 @@ def _validate_order_items(item_payloads: list[OrderItemCreate], restaurant_id: i
     return items
 
 
+def _to_order_event_response(event) -> OrderEventResponse:
+    return OrderEventResponse(
+        id=event.id,
+        status=event.status,
+        updated_at=event.updated_at,
+        delivery_id=event.delivery_id,
+    )
+
+
 @router.get('/', tags=['get orders'], response_model=list[OrderResponse])
 def get_orders(session: Session = Depends(get_session)):
     orders = session.query(Order).all()
@@ -221,3 +237,12 @@ def update_order(order_id: int, order: OrderUpdate, session: Session = Depends(g
     return _to_order_response(db_order)
 
 
+@router.get('/{order_id}/event', tags=['get order events'], response_model=list[OrderEventResponse])
+def get_order_events(order_id: int, session: Session = Depends(get_session)):
+    order = _get_order_or_404(order_id, session)
+
+    if not order.delivery:
+        return []
+
+    events = sorted(order.delivery.events, key=lambda e: e.updated_at, reverse=True)
+    return [_to_order_event_response(event) for event in events]
