@@ -21,6 +21,34 @@ def _create_restaurant(client: TestClient, kitchen_type_id: int, name: str = "Pa
     return response.json()
 
 
+def _create_user(client: TestClient, email: str = "user@example.com") -> dict:
+    response = client.post(
+        "/user",
+        json={
+            "name": "User Name",
+            "email": email,
+            "house_lat": -30.12,
+            "house_lon": -51.11,
+            "phones": ["51999999999"],
+        },
+    )
+    assert response.status_code == 200
+    return response.json()
+
+
+def _create_item(client: TestClient, restaurant_id: int, name: str = "Dish", price: float = 10.0) -> dict:
+    response = client.post(
+        "/item/",
+        json={
+            "name": name,
+            "price": price,
+            "restaurant_id": restaurant_id,
+        },
+    )
+    assert response.status_code == 201
+    return response.json()
+
+
 def test_user_create(client: TestClient) -> None:
     response = client.post(
         "/user",
@@ -35,6 +63,7 @@ def test_user_create(client: TestClient) -> None:
 
     assert response.status_code == 200
     payload = response.json()
+    assert isinstance(payload["id"], int)
     assert payload["name"] == "Joao"
     assert payload["email"] == "joao@example.com"
     assert set(payload["phones"]) == {"51999999999", "51888888888"}
@@ -184,4 +213,156 @@ def test_item_create_with_invalid_restaurant_returns_404(client: TestClient) -> 
         },
     )
 
+    assert response.status_code == 404
+
+
+def test_order_crud(client: TestClient) -> None:
+    kitchen = _create_kitchen(client, "Thai")
+    restaurant = _create_restaurant(client, kitchen["id"], "Thai House")
+    user = _create_user(client, "order-user@example.com")
+    item_one = _create_item(client, restaurant["id"], "Pad Thai", 45.9)
+    item_two = _create_item(client, restaurant["id"], "Curry", 39.5)
+
+    create_response = client.post(
+        "/order/",
+        json={
+            "restaurant_id": restaurant["id"],
+            "user_id": user["id"],
+            "items": [
+                {"item_id": item_one["id"], "quantity": 2},
+                {"item_id": item_two["id"], "quantity": 1},
+            ],
+        },
+    )
+    assert create_response.status_code == 201
+    order = create_response.json()
+    order_id = order["id"]
+    assert order["restaurant"]["id"] == restaurant["id"]
+    assert order["user"]["id"] == user["id"]
+    assert order["user"]["email"] == user["email"]
+    assert order["created_at"]
+    assert len(order["items"]) == 2
+
+    get_response = client.get(f"/order/{order_id}")
+    assert get_response.status_code == 200
+    assert get_response.json()["id"] == order_id
+    assert get_response.json()["created_at"]
+
+    patch_response = client.patch(
+        f"/order/{order_id}",
+        json={
+            "items": [
+                {"item_id": item_one["id"], "quantity": 5},
+            ],
+        },
+    )
+    assert patch_response.status_code == 200
+    updated = patch_response.json()
+    assert len(updated["items"]) == 1
+    assert updated["items"][0]["quantity"] == 5
+
+    delete_response = client.delete(f"/order/{order_id}")
+    assert delete_response.status_code == 204
+
+    missing_response = client.get(f"/order/{order_id}")
+    assert missing_response.status_code == 404
+
+
+def test_order_create_with_invalid_user_returns_404(client: TestClient) -> None:
+    kitchen = _create_kitchen(client, "Greek")
+    restaurant = _create_restaurant(client, kitchen["id"], "Greek House")
+
+    response = client.post(
+        "/order/",
+        json={
+            "restaurant_id": restaurant["id"],
+            "user_id": 999,
+            "items": [],
+        },
+    )
+
+    assert response.status_code == 404
+
+
+def test_order_create_with_item_from_another_restaurant_returns_404(client: TestClient) -> None:
+    kitchen = _create_kitchen(client, "Indian")
+    restaurant_one = _create_restaurant(client, kitchen["id"], "India One")
+    restaurant_two = _create_restaurant(client, kitchen["id"], "India Two")
+    user = _create_user(client, "cross-item@example.com")
+    wrong_item = _create_item(client, restaurant_two["id"], "Biryani", 42.0)
+
+    response = client.post(
+        "/order/",
+        json={
+            "restaurant_id": restaurant_one["id"],
+            "user_id": user["id"],
+            "items": [
+                {"item_id": wrong_item["id"], "quantity": 1},
+            ],
+        },
+    )
+
+    assert response.status_code == 404
+
+
+def test_user_orders_list_and_get_by_id(client: TestClient) -> None:
+    kitchen = _create_kitchen(client, "French")
+    restaurant = _create_restaurant(client, kitchen["id"], "Maison")
+    user = _create_user(client, "user-orders@example.com")
+    item = _create_item(client, restaurant["id"], "Crepe", 25.0)
+
+    first_order_response = client.post(
+        "/order/",
+        json={
+            "restaurant_id": restaurant["id"],
+            "user_id": user["id"],
+            "items": [{"item_id": item["id"], "quantity": 1}],
+        },
+    )
+    assert first_order_response.status_code == 201
+    first_order = first_order_response.json()
+
+    second_order_response = client.post(
+        "/order/",
+        json={
+            "restaurant_id": restaurant["id"],
+            "user_id": user["id"],
+            "items": [{"item_id": item["id"], "quantity": 3}],
+        },
+    )
+    assert second_order_response.status_code == 201
+    second_order = second_order_response.json()
+
+    list_response = client.get(f"/user/{user['id']}/order")
+    assert list_response.status_code == 200
+    list_payload = list_response.json()
+    returned_order_ids = {order["id"] for order in list_payload}
+    assert returned_order_ids == {first_order["id"], second_order["id"]}
+    assert all(order["created_at"] for order in list_payload)
+
+    get_response = client.get(f"/user/{user['id']}/order/{first_order['id']}")
+    assert get_response.status_code == 200
+    assert get_response.json()["id"] == first_order["id"]
+    assert get_response.json()["created_at"]
+
+
+def test_user_order_by_id_from_another_user_returns_404(client: TestClient) -> None:
+    kitchen = _create_kitchen(client, "Mexican")
+    restaurant = _create_restaurant(client, kitchen["id"], "Casa Mex")
+    owner_user = _create_user(client, "owner@example.com")
+    another_user = _create_user(client, "other@example.com")
+    item = _create_item(client, restaurant["id"], "Taco", 18.0)
+
+    order_response = client.post(
+        "/order/",
+        json={
+            "restaurant_id": restaurant["id"],
+            "user_id": owner_user["id"],
+            "items": [{"item_id": item["id"], "quantity": 2}],
+        },
+    )
+    assert order_response.status_code == 201
+    order_id = order_response.json()["id"]
+
+    response = client.get(f"/user/{another_user['id']}/order/{order_id}")
     assert response.status_code == 404

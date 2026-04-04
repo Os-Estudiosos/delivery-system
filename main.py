@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from routes import user_router, kitchen_router, restaurant_router, courier_router, item_router
+from routes import user_router, kitchen_router, restaurant_router, courier_router, item_router, order_router
 from contextlib import asynccontextmanager
 
 from database.connection import engine
@@ -19,3 +19,4 @@ app.include_router(kitchen_router)
 app.include_router(restaurant_router)
 app.include_router(courier_router)
 app.include_router(item_router)
+app.include_router(order_router)

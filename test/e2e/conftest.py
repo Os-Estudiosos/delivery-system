@@ -12,6 +12,7 @@ from database.models import Base
 from routes.courier import router as courier_router
 from routes.item import router as item_router
 from routes.kitchen import router as kitchen_router
+from routes.order import router as order_router
 from routes.restaurant import router as restaurant_router
 from routes.user import router as user_router
 
@@ -49,6 +50,7 @@ def client() -> Generator[TestClient, None, None]:
     app.include_router(restaurant_router)
     app.include_router(courier_router)
     app.include_router(item_router)
+    app.include_router(order_router)
     app.dependency_overrides[get_session] = override_get_session
 
     with TestClient(app) as test_client:

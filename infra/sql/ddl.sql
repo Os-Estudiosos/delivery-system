@@ -19,7 +19,8 @@ CREATE TYPE order_status AS ENUM (
 
 -- User (customer)
 CREATE TABLE users (
-    email       VARCHAR(255) PRIMARY KEY,
+    id          SERIAL PRIMARY KEY,
+    email       VARCHAR(255) NOT NULL UNIQUE,
     name        VARCHAR(255) NOT NULL,
     house_lat   DOUBLE PRECISION NOT NULL,
     house_lon   DOUBLE PRECISION NOT NULL
@@ -27,9 +28,9 @@ CREATE TABLE users (
 
 -- User phones (multivalued)
 CREATE TABLE phones (
-    user_email  VARCHAR(255) NOT NULL REFERENCES users(email) ON DELETE CASCADE,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     phone       VARCHAR(20)  NOT NULL,
-    PRIMARY KEY (user_email, phone)
+    PRIMARY KEY (user_id, phone)
 );
 
 -- Kitchen type
@@ -68,7 +69,7 @@ CREATE TABLE courier (
 CREATE TABLE orders (
     id          SERIAL PRIMARY KEY,
     restaurant_id INTEGER    NOT NULL REFERENCES restaurant(id),
-    user_email  VARCHAR(255) NOT NULL REFERENCES users(email),
+    user_id     INTEGER      NOT NULL REFERENCES users(id),
     created_at  TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 
@@ -98,7 +99,7 @@ CREATE TABLE event (
 
 -- -------------------- USEFUL INDEXES -------------------------
 
-CREATE INDEX idx_orders_user ON orders(user_email, created_at DESC);
+CREATE INDEX idx_orders_user ON orders(user_id, created_at DESC);
 CREATE INDEX idx_event_order ON event(order_id, updated_at ASC);
 CREATE INDEX idx_delivery_courier ON delivery(courier_id);
 

@@ -38,7 +38,8 @@ class OrderStatus(enum.Enum):
 class User(Base):
     __tablename__ = "users"
 
-    email = Column(String(255), primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    email = Column(String(255), nullable=False, unique=True)
     name = Column(String(255), nullable=False)
     house_lat = Column(Double, nullable=False)
     house_lon = Column(Double, nullable=False)
@@ -50,7 +51,7 @@ class User(Base):
 class Phone(Base):
     __tablename__ = "phones"
 
-    user_email = Column(String(255), ForeignKey("users.email", ondelete="CASCADE"), primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     phone = Column(String(20), primary_key=True)
 
     user = relationship("User", back_populates="phones")
@@ -111,7 +112,7 @@ class Order(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     restaurant_id = Column(Integer, ForeignKey("restaurant.id"), nullable=False)
-    user_email = Column(String(255), ForeignKey("users.email"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
     restaurant = relationship("Restaurant", back_populates="orders")
