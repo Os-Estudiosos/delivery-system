@@ -1,0 +1,1 @@
+from dynamo.courier_routes import router as courier_pos_router
