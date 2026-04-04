@@ -247,8 +247,9 @@ def create_rds(rds, subnet_ids: list[str], sg_rds_id: str) -> str:
             SubnetIds=subnet_ids,
         )
     except rds.exceptions.DBSubnetGroupAlreadyExistsFault:
-        log("  DB subnet group ja existe, atualizando subnets...")
-        rds.modify_db_subnet_group(
+        log("  DB subnet group ja existe, recriando...")
+        rds.delete_db_subnet_group(DBSubnetGroupName=f"{PROJECT}-db-subnet")
+        rds.create_db_subnet_group(
             DBSubnetGroupName=f"{PROJECT}-db-subnet",
             DBSubnetGroupDescription="DijkFood RDS subnets",
             SubnetIds=subnet_ids,
@@ -408,7 +409,6 @@ def create_ecs_cluster(ec2, ecs, asg_client, subnet_ids, sg_ecs_id, ip_arn) -> s
         LaunchTemplateData={
             "ImageId":            ami_id,
             "InstanceType":       EC2_INSTANCE_TYPE,
-            "KeyName":            KEY_PAIR_NAME,
             "SecurityGroupIds":   [sg_ecs_id],
             "IamInstanceProfile": {"Arn": ip_arn},
             "UserData":           user_data,
@@ -551,12 +551,12 @@ def create_ecs_service(ecs, cluster_name, td_arn, tg_arn) -> None:
     )
     state["service_name"] = f"{PROJECT}-api"
 
-    log("Aguardando ECS service estabilizar (até 5 min)...")
+    log("Aguardando ECS service estabilizar (até 15 min)...")
     waiter = ecs.get_waiter("services_stable")
     waiter.wait(
         cluster=cluster_name,
         services=[f"{PROJECT}-api"],
-        WaiterConfig={"Delay": 15, "MaxAttempts": 20},
+        WaiterConfig={"Delay": 20, "MaxAttempts": 45},
     )
     log("ECS service estável")
 
