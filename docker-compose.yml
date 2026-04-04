@@ -12,6 +12,7 @@ services:
         volumes:
             - .:/app
             - /app/.venv
+            - ~/.aws:/root/.aws # AWS credentials
         env_file:
             - .env
 

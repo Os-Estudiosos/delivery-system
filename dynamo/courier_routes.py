@@ -2,7 +2,6 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from datetime import datetime
 from decimal import Decimal
-import boto3
 from boto3.dynamodb.conditions import Key
 
 from dynamo.table import get_resource_and_client, create_table, TABLE_NAME
@@ -14,7 +13,6 @@ table = dynamodb.Table(TABLE_NAME)
 
 
 class CourierLocationCreate(BaseModel):
-    courier_id: str
     delivery_id: str
     lat_courier: float
     lon_courier: float
@@ -28,7 +26,7 @@ class CourierLocationResponse(BaseModel):
     timestamp: str
 
 
-@router.post("/courier/location")
+@router.post("/courier/{courier_id}/location")
 def update_location(data: CourierLocationCreate):
     timestamp = datetime.utcnow().isoformat()
 

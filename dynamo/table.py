@@ -12,7 +12,7 @@ TABLE_NAME = "dynamo-dijsktra-food"
 GSI_TYPE   = "gsi-type"
 GSI_STATUS = "gsi-status"
 N_COURIERS = 500
-N_ITEMS    = 100_000
+N_ITEMS    = 100
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -76,9 +76,9 @@ def populate(table, n=10000):
             ts = base_ts + timedelta(seconds=i)
 
             batch.put_item(Item={
-                "courier_id": f"{random.randint(1, 100):04d}",
+                "courier_id": f"courier{random.randint(1, N_COURIERS):04d}",
                 "timestamp": ts.isoformat(),
-                "delivery_id": f"{random.randint(1, 1000):05d}",
+                "delivery_id": f"delivery{random.randint(1, 1000):05d}",
                 # Coordenadas aleatórias dentro de um retângulo aproximando a área do Rio de Janeiro
                 "lat_courier": Decimal(str(random.uniform(-23.7, -22.8))),
                 "lon_courier": Decimal(str(random.uniform(-43.8, -43.1))),
@@ -87,7 +87,6 @@ def populate(table, n=10000):
 
 # Destruindo a tabela
 def destroy_table(ddb):
-    print("\n── Teardown " + "─" * 55)
     print(f"[DDB] Deleting table '{TABLE_NAME}' ...")
     try:
         table = ddb.Table(TABLE_NAME)
@@ -99,3 +98,9 @@ def destroy_table(ddb):
             print("[DDB] Table not found, skipping.")
         else:
             raise
+
+if __name__ == "__main__":
+    ddb, _ = get_resource_and_client()
+    destroy_table(ddb)
+    table = create_table(ddb)
+    populate(table, n=N_ITEMS)
