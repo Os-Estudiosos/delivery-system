@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from database.connection import get_session
 from database.models import Base
 from routes.courier import router as courier_router
+from routes.delivery import router as delivery_router
 from routes.item import router as item_router
 from routes.kitchen import router as kitchen_router
 from routes.order import router as order_router
@@ -49,6 +50,7 @@ def client() -> Generator[TestClient, None, None]:
     app.include_router(kitchen_router)
     app.include_router(restaurant_router)
     app.include_router(courier_router)
+    app.include_router(delivery_router)
     app.include_router(item_router)
     app.include_router(order_router)
     app.dependency_overrides[get_session] = override_get_session

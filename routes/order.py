@@ -221,9 +221,3 @@ def update_order(order_id: int, order: OrderUpdate, session: Session = Depends(g
     return _to_order_response(db_order)
 
 
-@router.delete('/{order_id}', tags=['delete order'], status_code=status.HTTP_204_NO_CONTENT)
-def delete_order(order_id: int, session: Session = Depends(get_session)):
-    db_order = _get_order_or_404(order_id, session)
-
-    session.delete(db_order)
-    session.commit()

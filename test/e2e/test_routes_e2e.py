@@ -261,11 +261,8 @@ def test_order_crud(client: TestClient) -> None:
     assert len(updated["items"]) == 1
     assert updated["items"][0]["quantity"] == 5
 
-    delete_response = client.delete(f"/order/{order_id}")
-    assert delete_response.status_code == 204
-
-    missing_response = client.get(f"/order/{order_id}")
-    assert missing_response.status_code == 404
+    get_after_patch = client.get(f"/order/{order_id}")
+    assert get_after_patch.status_code == 200
 
 
 def test_order_create_with_invalid_user_returns_404(client: TestClient) -> None:
@@ -366,3 +363,77 @@ def test_user_order_by_id_from_another_user_returns_404(client: TestClient) -> N
 
     response = client.get(f"/user/{another_user['id']}/order/{order_id}")
     assert response.status_code == 404
+
+
+def test_delivery_crud_without_delete(client: TestClient) -> None:
+    kitchen = _create_kitchen(client, "Peruvian")
+    restaurant = _create_restaurant(client, kitchen["id"], "Andes")
+    user = _create_user(client, "delivery-user@example.com")
+
+    item = _create_item(client, restaurant["id"], "Lomo Saltado", 44.0)
+
+    order_response = client.post(
+        "/order/",
+        json={
+            "restaurant_id": restaurant["id"],
+            "user_id": user["id"],
+            "items": [{"item_id": item["id"], "quantity": 1}],
+        },
+    )
+    assert order_response.status_code == 201
+    order_id = order_response.json()["id"]
+
+    courier_one_response = client.post(
+        "/courier/",
+        json={
+            "name": "Courier One",
+            "vehicle": "BIKE",
+            "lat": -30.1,
+            "lon": -51.1,
+        },
+    )
+    assert courier_one_response.status_code == 201
+    courier_one_id = courier_one_response.json()["id"]
+
+    courier_two_response = client.post(
+        "/courier/",
+        json={
+            "name": "Courier Two",
+            "vehicle": "CAR",
+            "lat": -30.2,
+            "lon": -51.2,
+        },
+    )
+    assert courier_two_response.status_code == 201
+    courier_two_id = courier_two_response.json()["id"]
+
+    create_response = client.post(
+        "/delivery/",
+        json={
+            "order_id": order_id,
+            "courier_id": courier_one_id,
+        },
+    )
+    assert create_response.status_code == 201
+    delivery = create_response.json()
+    delivery_id = delivery["id"]
+    assert delivery["order"]["id"] == order_id
+    assert delivery["courier"]["id"] == courier_one_id
+
+    get_response = client.get(f"/delivery/{delivery_id}")
+    assert get_response.status_code == 200
+    assert get_response.json()["id"] == delivery_id
+
+    list_response = client.get("/delivery/")
+    assert list_response.status_code == 200
+    assert len(list_response.json()) == 1
+
+    patch_response = client.patch(
+        f"/delivery/{delivery_id}",
+        json={"courier_id": courier_two_id},
+    )
+    assert patch_response.status_code == 200
+    assert patch_response.json()["courier"]["id"] == courier_two_id
+
+    delete_response = client.delete(f"/delivery/{delivery_id}")
+    assert delete_response.status_code == 405

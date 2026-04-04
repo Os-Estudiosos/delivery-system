@@ -93,13 +93,12 @@ CREATE TABLE event (
     id          SERIAL PRIMARY KEY,
     status      order_status    NOT NULL,
     updated_at  TIMESTAMPTZ     NOT NULL DEFAULT now(),
-    order_id    INTEGER         NOT NULL REFERENCES orders(id),
-    courier_id  INTEGER         NOT NULL REFERENCES courier(id)
+    delivery_id INTEGER         NOT NULL REFERENCES delivery(id) ON DELETE CASCADE
 );
 
 -- -------------------- USEFUL INDEXES -------------------------
 
 CREATE INDEX idx_orders_user ON orders(user_id, created_at DESC);
-CREATE INDEX idx_event_order ON event(order_id, updated_at ASC);
+CREATE INDEX idx_event_delivery ON event(delivery_id, updated_at ASC);
 CREATE INDEX idx_delivery_courier ON delivery(courier_id);
 
