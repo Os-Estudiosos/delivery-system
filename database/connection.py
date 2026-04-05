@@ -55,4 +55,4 @@ if graph is None:
 
 
 def get_graph():
-    return graph
+    yield graph
