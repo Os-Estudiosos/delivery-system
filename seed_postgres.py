@@ -23,6 +23,35 @@ from database.models import (
 )
 
 
+STATUS_FLOW: list[OrderStatus] = [
+    OrderStatus.CONFIRMED,
+    OrderStatus.PREPARING,
+    OrderStatus.READY_FOR_PICKUP,
+    OrderStatus.PICKED_UP,
+    OrderStatus.IN_TRANSIT,
+    OrderStatus.DELIVERED,
+]
+
+
+def validate_delivery_event_flow(delivery_statuses: list[list[OrderStatus]]) -> None:
+    for index, statuses in enumerate(delivery_statuses, start=1):
+        if not statuses:
+            raise ValueError(f"Delivery #{index} must have at least one event.")
+
+        expected_prefix = STATUS_FLOW[: len(statuses)]
+        if statuses != expected_prefix:
+            raise ValueError(
+                f"Delivery #{index} has an invalid event order: {statuses}. "
+                f"Expected contiguous prefix: {expected_prefix}."
+            )
+
+        # A courier can only be associated once order reached READY_FOR_PICKUP.
+        if OrderStatus.READY_FOR_PICKUP not in statuses:
+            raise ValueError(
+                f"Delivery #{index} cannot be assigned before READY_FOR_PICKUP is reached."
+            )
+
+
 def build_database_url(
     db_user: str | None = None,
     db_password: str | None = None,
@@ -143,16 +172,36 @@ def seed_data(session: Session) -> None:
     session.add_all(deliveries)
     session.flush()
 
-    events = [
-        Event(delivery_id=deliveries[0].id, status=OrderStatus.CONFIRMED),
-        Event(delivery_id=deliveries[0].id, status=OrderStatus.PREPARING),
-        Event(delivery_id=deliveries[0].id, status=OrderStatus.READY_FOR_PICKUP),
-        Event(delivery_id=deliveries[1].id, status=OrderStatus.CONFIRMED),
-        Event(delivery_id=deliveries[1].id, status=OrderStatus.PICKED_UP),
-        Event(delivery_id=deliveries[1].id, status=OrderStatus.IN_TRANSIT),
-        Event(delivery_id=deliveries[2].id, status=OrderStatus.CONFIRMED),
-        Event(delivery_id=deliveries[2].id, status=OrderStatus.DELIVERED),
+    delivery_event_flow = [
+        [
+            OrderStatus.CONFIRMED,
+            OrderStatus.PREPARING,
+            OrderStatus.READY_FOR_PICKUP,
+        ],
+        [
+            OrderStatus.CONFIRMED,
+            OrderStatus.PREPARING,
+            OrderStatus.READY_FOR_PICKUP,
+            OrderStatus.PICKED_UP,
+            OrderStatus.IN_TRANSIT,
+        ],
+        [
+            OrderStatus.CONFIRMED,
+            OrderStatus.PREPARING,
+            OrderStatus.READY_FOR_PICKUP,
+            OrderStatus.PICKED_UP,
+            OrderStatus.IN_TRANSIT,
+            OrderStatus.DELIVERED,
+        ],
     ]
+
+    validate_delivery_event_flow(delivery_event_flow)
+
+    events: list[Event] = []
+    for delivery, statuses in zip(deliveries, delivery_event_flow):
+        for status in statuses:
+            events.append(Event(delivery_id=delivery.id, status=status))
+
     session.add_all(events)
 
 

@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from database.connection import get_session
-from database.models import Order, Phone, User
+from database.models import Order, OrderStatus, Phone, User, VehicleType
 
 router = APIRouter()
 
@@ -39,6 +39,12 @@ class ItemReference(BaseModel):
     price: float
 
 
+class CourierReference(BaseModel):
+    id: int
+    name: str
+    vehicle: VehicleType
+
+
 class UserOrderItemResponse(BaseModel):
     item: ItemReference
     quantity: int
@@ -49,6 +55,8 @@ class UserOrderResponse(BaseModel):
     restaurant: RestaurantReference
     created_at: datetime
     items: list[UserOrderItemResponse]
+    courier: CourierReference | None
+    status: OrderStatus | None
 
 
 def _get_user_or_404(user_id: int, session: Session) -> User:
@@ -63,6 +71,22 @@ def _get_user_or_404(user_id: int, session: Session) -> User:
 
 
 def _to_user_order_response(order: Order) -> UserOrderResponse:
+    latest_event = (
+        max(order.delivery.events, key=lambda event: (event.updated_at, event.id))
+        if order.delivery and order.delivery.events
+        else None
+    )
+
+    courier = (
+        CourierReference(
+            id=order.delivery.courier.id,
+            name=order.delivery.courier.name,
+            vehicle=order.delivery.courier.vehicle,
+        )
+        if order.delivery
+        else None
+    )
+
     return UserOrderResponse(
         id=order.id,
         restaurant=RestaurantReference(
@@ -81,6 +105,8 @@ def _to_user_order_response(order: Order) -> UserOrderResponse:
             )
             for order_item in order.items
         ],
+        courier=courier,
+        status=latest_event.status if latest_event else None,
     )
 
 
