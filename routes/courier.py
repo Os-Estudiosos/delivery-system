@@ -42,7 +42,7 @@ class CourierPositionUpdate(BaseModel):
 
 
 class CourierLocationResponse(BaseModel):
-    courier_id: str
+    courier_id: int
     delivery_id: str
     lat_courier: float
     lon_courier: float
@@ -152,7 +152,7 @@ def update_courier_position(
     timestamp = datetime.datetime.utcnow().isoformat()
 
     table.put_item(Item={
-        "courier_id": str(courier_id),
+        "courier_id": courier_id,
         "timestamp": timestamp,
         "delivery_id": data.delivery_id,
         "lat_courier": Decimal(str(data.lat_courier)),
@@ -168,7 +168,7 @@ def update_courier_position(
 @router.get('/{courier_id}/location', tags=['get courier location'], response_model=CourierLocationResponse)
 def get_last_location(courier_id: int, table=Depends(get_session_dynamo)):
     response = table.query(
-        KeyConditionExpression=Key("courier_id").eq(str(courier_id)),
+        KeyConditionExpression=Key("courier_id").eq(courier_id),
         ScanIndexForward=False,  # mais recente primeiro
         Limit=1,
     )
@@ -183,7 +183,7 @@ def get_last_location(courier_id: int, table=Depends(get_session_dynamo)):
 
     item = items[0]
     return CourierLocationResponse(
-        courier_id=item["courier_id"],
+        courier_id=int(item["courier_id"]),
         delivery_id=item["delivery_id"],
         lat_courier=float(item["lat_courier"]),
         lon_courier=float(item["lon_courier"]),

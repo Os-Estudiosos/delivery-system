@@ -1,14 +1,43 @@
 import os
+import boto3
 from dotenv import load_dotenv
 from osmnx import graph
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from deploy import get_resource_and_client
 from database.dynamo_table import table_exists, create_table, TABLE_NAME
 from database.create_graph import load_graph_cache, download_graph, save_graph_cache
 from pathlib import Path
 
 load_dotenv()
+
+REGION = os.environ.get("AWS_REGION", "us-east-1")
+
+
+def get_resource_and_client():
+    """Initialize DynamoDB resource/client using local endpoint in development and AWS otherwise."""
+    project_env = os.environ.get("PROJECT_ENV", "production").lower()
+
+    if project_env == "development":
+        endpoint_url = os.environ.get("DYNAMODB_ENDPOINT", "http://localhost:8001")
+        local_key = os.environ.get("AWS_ACCESS_KEY_ID", "local")
+        local_secret = os.environ.get("AWS_SECRET_ACCESS_KEY", "local")
+        session = boto3.Session(
+            region_name=REGION,
+            aws_access_key_id=local_key,
+            aws_secret_access_key=local_secret,
+        )
+        return (
+            session.resource("dynamodb", endpoint_url=endpoint_url),
+            session.client("dynamodb", endpoint_url=endpoint_url),
+        )
+
+    session = boto3.Session(
+        region_name=REGION,
+        aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
+        aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
+        aws_session_token=os.environ.get("AWS_SESSION_TOKEN"),
+    )
+    return session.resource("dynamodb"), session.client("dynamodb")
 
 
 _DB_URL = (

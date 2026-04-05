@@ -1,0 +1,11 @@
+PROJECT_ENV=development
+AWS_REGION=us-east-1
+
+# DynamoDB endpoint used only when PROJECT_ENV=development.
+# Use http://localhost:8001 when running API locally.
+# Use http://dynamodb:8000 when running API inside docker-compose.
+DYNAMODB_ENDPOINT=http://localhost:8001
+
+# Dummy credentials work for local DynamoDB. Real values are required for AWS environments.
+AWS_ACCESS_KEY_ID=local
+AWS_SECRET_ACCESS_KEY=local
