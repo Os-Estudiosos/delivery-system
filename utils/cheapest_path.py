@@ -1,32 +1,19 @@
 from __future__ import annotations
-
 import heapq
 
 
-# ---------------------------------------------------------------------------
-# Dijkstra's algorithm
-# ---------------------------------------------------------------------------
-
+# Algoritmo de Dijkstra usando um min-heap (priority queue) para encontrar os caminhos mais baratos
+# de todos os nós a partir de um nó fonte. Retorna um dicionário de distâncias mínimas 
+# do nó fonte a cada nó alcançável.
 def dijkstra(graph: dict[int, list[tuple[int, float]]], source: int) -> dict[int, float]:
-    """
-    Single-source shortest paths using Dijkstra's algorithm with a min-heap.
 
-    Parameters
-    ----------
-    graph  : adjacency list — dict[node, list[(neighbour, weight)]]
-    source : starting node id
-
-    Returns
-    -------
-    dict mapping each reachable node to its shortest distance from source.
-    """
     dist: dict[int, float] = {source: 0.0}
     heap: list[tuple[float, int]] = [(0.0, source)]
 
     while heap:
         d_u, u = heapq.heappop(heap)
 
-        # Skip stale heap entries (lazy deletion)
+        # lazy deletion
         if d_u > dist.get(u, float("inf")):
             continue
 
