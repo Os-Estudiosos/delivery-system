@@ -38,7 +38,8 @@ class OrderStatus(enum.Enum):
 class User(Base):
     __tablename__ = "users"
 
-    email = Column(String(255), primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    email = Column(String(255), nullable=False, unique=True)
     name = Column(String(255), nullable=False)
     house_lat = Column(Double, nullable=False)
     house_lon = Column(Double, nullable=False)
@@ -50,7 +51,7 @@ class User(Base):
 class Phone(Base):
     __tablename__ = "phones"
 
-    user_email = Column(String(255), ForeignKey("users.email", ondelete="CASCADE"), primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     phone = Column(String(20), primary_key=True)
 
     user = relationship("User", back_populates="phones")
@@ -103,7 +104,6 @@ class Courier(Base):
     lon = Column(Double, nullable=False)
 
     deliveries = relationship("Delivery", back_populates="courier")
-    events = relationship("Event", back_populates="courier")
 
 
 class Order(Base):
@@ -111,14 +111,13 @@ class Order(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     restaurant_id = Column(Integer, ForeignKey("restaurant.id"), nullable=False)
-    user_email = Column(String(255), ForeignKey("users.email"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
     restaurant = relationship("Restaurant", back_populates="orders")
     user = relationship("User", back_populates="orders")
     items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
     delivery = relationship("Delivery", back_populates="order", uselist=False)
-    events = relationship("Event", back_populates="order")
 
 
 class OrderItem(Base):
@@ -143,6 +142,7 @@ class Delivery(Base):
 
     order = relationship("Order", back_populates="delivery")
     courier = relationship("Courier", back_populates="deliveries")
+    events = relationship("Event", back_populates="delivery", cascade="all, delete-orphan")
 
 
 class Event(Base):
@@ -151,8 +151,6 @@ class Event(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     status     = Column(Enum(OrderStatus, name="order_status"), nullable=False)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
-    order_id = Column(Integer, ForeignKey("orders.id"), nullable=False)
-    courier_id = Column(Integer, ForeignKey("courier.id"), nullable=False)
+    delivery_id = Column(Integer, ForeignKey("delivery.id", ondelete="CASCADE"), nullable=False)
 
-    order = relationship("Order", back_populates="events")
-    courier = relationship("Courier", back_populates="events")
+    delivery = relationship("Delivery", back_populates="events")
