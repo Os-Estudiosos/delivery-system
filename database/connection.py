@@ -63,10 +63,12 @@ def get_session():
 ddb_resource, ddb_client = get_resource_and_client()
 
 
-def get_session_dynamo():
-
+def initialize_dynamo_table() -> None:
     if not table_exists(ddb_client):
         create_table(ddb_resource)
+
+
+def get_session_dynamo():
     table = ddb_resource.Table(TABLE_NAME)
     try:
         yield table

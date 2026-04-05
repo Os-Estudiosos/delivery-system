@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from database.connection import get_session
+from database.connection import get_session, get_graph
 from database.models import Courier, Delivery, Event, Order, OrderStatus
 
 router = APIRouter(prefix='/delivery', tags=['delivery'])
@@ -124,6 +124,11 @@ def _to_delivery_status_response(event: Event) -> DeliveryStatusResponse:
     )
 
 
+def _assign_delivery_to_nearest_courier(delivery: Delivery, graph) -> None:
+    """Assign delivery to the nearest courier. To be implemented."""
+    pass
+
+
 @router.get('/', tags=['get deliveries'], response_model=list[DeliveryResponse])
 def get_deliveries(session: Session = Depends(get_session)):
     deliveries = session.query(Delivery).all()
@@ -185,7 +190,7 @@ def update_delivery(delivery_id: int, delivery: DeliveryUpdate, session: Session
 
 
 @router.patch('/{delivery_id}/status', tags=['update delivery status'], response_model=DeliveryStatusResponse, status_code=status.HTTP_201_CREATED)
-def update_delivery_status(delivery_id: int, payload: DeliveryStatusCreate, session: Session = Depends(get_session)):
+def update_delivery_status(delivery_id: int, payload: DeliveryStatusCreate, session: Session = Depends(get_session), graph = Depends(get_graph)):
     db_delivery = _get_delivery_or_404(delivery_id, session)
     current_status = _get_latest_delivery_status(db_delivery)
     expected_status = _expected_next_status(current_status)
@@ -201,6 +206,9 @@ def update_delivery_status(delivery_id: int, payload: DeliveryStatusCreate, sess
             status_code=status.HTTP_409_CONFLICT,
             detail=f'Invalid delivery status transition. Expected {expected_status.value}.',
         )
+
+    if payload.status == OrderStatus.READY_FOR_PICKUP:
+        _assign_delivery_to_nearest_courier(db_delivery, graph)
 
     db_event = Event(
         status=payload.status,
