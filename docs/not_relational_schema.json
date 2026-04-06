@@ -1,0 +1,7 @@
+{
+    "courier_id": "integer",
+    "timestamp": "timestamp",
+    "delivery_id": "integer",
+    "lat": "float",
+    "lon": "float"
+}
