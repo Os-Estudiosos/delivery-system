@@ -12,6 +12,12 @@ from sqlalchemy import (
     String,
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
+import boto3
+from botocore.exceptions import ClientError
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 class Base(DeclarativeBase):

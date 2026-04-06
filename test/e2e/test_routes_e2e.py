@@ -242,11 +242,15 @@ def test_order_crud(client: TestClient) -> None:
     assert order["user"]["email"] == user["email"]
     assert order["created_at"]
     assert len(order["items"]) == 2
+    assert order["courier"] is None
+    assert order["status"] is None
 
     get_response = client.get(f"/order/{order_id}")
     assert get_response.status_code == 200
     assert get_response.json()["id"] == order_id
     assert get_response.json()["created_at"]
+    assert get_response.json()["courier"] is None
+    assert get_response.json()["status"] is None
 
     patch_response = client.patch(
         f"/order/{order_id}",
@@ -260,9 +264,13 @@ def test_order_crud(client: TestClient) -> None:
     updated = patch_response.json()
     assert len(updated["items"]) == 1
     assert updated["items"][0]["quantity"] == 5
+    assert updated["courier"] is None
+    assert updated["status"] is None
 
     get_after_patch = client.get(f"/order/{order_id}")
     assert get_after_patch.status_code == 200
+    assert get_after_patch.json()["courier"] is None
+    assert get_after_patch.json()["status"] is None
 
 
 def test_order_create_with_invalid_user_returns_404(client: TestClient) -> None:
@@ -336,11 +344,15 @@ def test_user_orders_list_and_get_by_id(client: TestClient) -> None:
     returned_order_ids = {order["id"] for order in list_payload}
     assert returned_order_ids == {first_order["id"], second_order["id"]}
     assert all(order["created_at"] for order in list_payload)
+    assert all(order["courier"] is None for order in list_payload)
+    assert all(order["status"] is None for order in list_payload)
 
     get_response = client.get(f"/user/{user['id']}/order/{first_order['id']}")
     assert get_response.status_code == 200
     assert get_response.json()["id"] == first_order["id"]
     assert get_response.json()["created_at"]
+    assert get_response.json()["courier"] is None
+    assert get_response.json()["status"] is None
 
 
 def test_user_order_by_id_from_another_user_returns_404(client: TestClient) -> None:
@@ -600,6 +612,14 @@ def test_order_events_with_delivery(client: TestClient) -> None:
     assert all("updated_at" in event for event in events)
     assert all(event["delivery_id"] == delivery_id for event in events)
 
+    order_response = client.get(f"/order/{order_id}")
+    assert order_response.status_code == 200
+    order_payload = order_response.json()
+    assert order_payload["courier"]["id"] == courier_id
+    assert order_payload["courier"]["name"] == "Events Courier"
+    assert order_payload["courier"]["vehicle"] == "BIKE"
+    assert order_payload["status"] == "DELIVERED"
+
 
 def test_order_events_without_delivery(client: TestClient) -> None:
     kitchen = _create_kitchen(client, "Portuguese")
@@ -628,3 +648,64 @@ def test_order_events_without_delivery(client: TestClient) -> None:
 def test_order_events_404_for_missing_order(client: TestClient) -> None:
     response = client.get("/order/999/event")
     assert response.status_code == 404
+
+
+def test_user_orders_include_courier_and_latest_status(client: TestClient) -> None:
+    kitchen = _create_kitchen(client, "Moroccan")
+    restaurant = _create_restaurant(client, kitchen["id"], "Atlas")
+    user = _create_user(client, "user-order-status@example.com")
+    item = _create_item(client, restaurant["id"], "Couscous", 41.0)
+
+    order_response = client.post(
+        "/order/",
+        json={
+            "restaurant_id": restaurant["id"],
+            "user_id": user["id"],
+            "items": [{"item_id": item["id"], "quantity": 1}],
+        },
+    )
+    assert order_response.status_code == 201
+    order_id = order_response.json()["id"]
+
+    courier_response = client.post(
+        "/courier/",
+        json={
+            "name": "User Status Courier",
+            "vehicle": "CAR",
+            "lat": -30.6,
+            "lon": -51.6,
+        },
+    )
+    assert courier_response.status_code == 201
+    courier_id = courier_response.json()["id"]
+
+    delivery_response = client.post(
+        "/delivery/",
+        json={"order_id": order_id, "courier_id": courier_id},
+    )
+    assert delivery_response.status_code == 201
+    delivery_id = delivery_response.json()["id"]
+
+    status_response = client.patch(
+        f"/delivery/{delivery_id}/status",
+        json={"status": "CONFIRMED"},
+    )
+    assert status_response.status_code == 201
+
+    list_response = client.get(f"/user/{user['id']}/order")
+    assert list_response.status_code == 200
+    list_payload = list_response.json()
+    assert len(list_payload) == 1
+    assert list_payload[0]["id"] == order_id
+    assert list_payload[0]["courier"]["id"] == courier_id
+    assert list_payload[0]["courier"]["name"] == "User Status Courier"
+    assert list_payload[0]["courier"]["vehicle"] == "CAR"
+    assert list_payload[0]["status"] == "CONFIRMED"
+
+    get_response = client.get(f"/user/{user['id']}/order/{order_id}")
+    assert get_response.status_code == 200
+    get_payload = get_response.json()
+    assert get_payload["courier"]["id"] == courier_id
+    assert get_payload["courier"]["name"] == "User Status Courier"
+    assert get_payload["courier"]["vehicle"] == "CAR"
+    assert get_payload["status"] == "CONFIRMED"

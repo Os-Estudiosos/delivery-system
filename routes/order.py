@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from database.connection import get_session
-from database.models import Item, Order, OrderItem, OrderStatus, Restaurant, User
+from database.models import Item, Order, OrderItem, OrderStatus, Restaurant, User, VehicleType
 
 router = APIRouter(prefix='/order', tags=['order'])
 
@@ -26,6 +26,12 @@ class ItemReference(BaseModel):
     id: int
     name: str
     price: float
+
+
+class CourierReference(BaseModel):
+    id: int
+    name: str
+    vehicle: VehicleType
 
 
 class OrderItemCreate(BaseModel):
@@ -56,6 +62,8 @@ class OrderResponse(BaseModel):
     user: UserReference
     created_at: datetime
     items: list[OrderItemResponse]
+    courier: CourierReference | None
+    status: OrderStatus | OrderStatus.PREPARING
 
 
 class OrderEventResponse(BaseModel):
@@ -66,6 +74,22 @@ class OrderEventResponse(BaseModel):
 
 
 def _to_order_response(order: Order) -> OrderResponse:
+    latest_event = (
+        max(order.delivery.events, key=lambda event: (event.updated_at, event.id))
+        if order.delivery and order.delivery.events
+        else None
+    )
+
+    courier = (
+        CourierReference(
+            id=order.delivery.courier.id,
+            name=order.delivery.courier.name,
+            vehicle=order.delivery.courier.vehicle,
+        )
+        if order.delivery
+        else None
+    )
+
     return OrderResponse(
         id=order.id,
         restaurant=RestaurantReference(
@@ -89,6 +113,8 @@ def _to_order_response(order: Order) -> OrderResponse:
             )
             for order_item in order.items
         ],
+        courier=courier,
+        status=latest_event.status if latest_event else None,
     )
 
 

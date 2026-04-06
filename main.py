@@ -2,13 +2,14 @@ from fastapi import FastAPI
 from routes import user_router, kitchen_router, restaurant_router, courier_router, delivery_router, item_router, order_router
 from contextlib import asynccontextmanager
 
-from database.connection import engine
+from database.connection import engine, initialize_dynamo_table
 from database.models import Base
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
 	Base.metadata.create_all(bind=engine)
+	initialize_dynamo_table()
 	yield
 
 

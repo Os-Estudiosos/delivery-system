@@ -5,8 +5,9 @@ from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from database.connection import get_session
+from database.connection import get_session, get_graph
 from database.models import Courier, Delivery, Event, Order, OrderStatus
+from utils.cheapest_path import dijkstra
 
 router = APIRouter(prefix='/delivery', tags=['delivery'])
 
@@ -123,6 +124,38 @@ def _to_delivery_status_response(event: Event) -> DeliveryStatusResponse:
         delivery_id=event.delivery_id,
     )
 
+def _is_courier_available(courier: Courier) -> bool:
+    return all(
+        _get_latest_delivery_status(delivery) == OrderStatus.DELIVERED
+        for delivery in courier.deliveries
+    )
+
+
+def _assign_delivery_to_nearest_courier(delivery: Delivery, graph) -> None:
+    order = delivery.order
+    couriers = delivery.courier.session.query(Courier).all()
+
+    restaurant_node = graph.get_closest_node(order.restaurant.lat, order.restaurant.lon)
+    dists = dijkstra(graph, restaurant_node)
+
+    best_courier = None
+    best_dist = float("inf")
+
+    for courier in couriers:
+        if not _is_courier_available(courier):
+            continue
+
+        courier_node = graph.get_closest_node(courier.lat, courier.lon)
+        dist = dists.get(courier_node, float("inf"))
+
+        if dist < best_dist:
+            best_dist = dist
+            best_courier = courier
+
+    if best_courier:
+        delivery.courier = best_courier
+        delivery.status = OrderStatus.PICKED_UP
+
 
 @router.get('/', tags=['get deliveries'], response_model=list[DeliveryResponse])
 def get_deliveries(session: Session = Depends(get_session)):
@@ -185,7 +218,7 @@ def update_delivery(delivery_id: int, delivery: DeliveryUpdate, session: Session
 
 
 @router.patch('/{delivery_id}/status', tags=['update delivery status'], response_model=DeliveryStatusResponse, status_code=status.HTTP_201_CREATED)
-def update_delivery_status(delivery_id: int, payload: DeliveryStatusCreate, session: Session = Depends(get_session)):
+def update_delivery_status(delivery_id: int, payload: DeliveryStatusCreate, session: Session = Depends(get_session), graph = Depends(get_graph)):
     db_delivery = _get_delivery_or_404(delivery_id, session)
     current_status = _get_latest_delivery_status(db_delivery)
     expected_status = _expected_next_status(current_status)
@@ -201,6 +234,9 @@ def update_delivery_status(delivery_id: int, payload: DeliveryStatusCreate, sess
             status_code=status.HTTP_409_CONFLICT,
             detail=f'Invalid delivery status transition. Expected {expected_status.value}.',
         )
+
+    if payload.status == OrderStatus.READY_FOR_PICKUP:
+        _assign_delivery_to_nearest_courier(db_delivery, graph)
 
     db_event = Event(
         status=payload.status,
