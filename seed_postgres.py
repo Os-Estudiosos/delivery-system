@@ -28,6 +28,9 @@ from database.models import (
     User,
     VehicleType,
 )
+from utils.aws_credentials import configure_local_aws_credentials
+
+configure_local_aws_credentials()
 
 
 STATUS_FLOW: list[OrderStatus] = [

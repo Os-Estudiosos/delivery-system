@@ -18,6 +18,8 @@ Pode ser executado de forma independente para fins de teste:
 
 import boto3
 import os
+from datetime import datetime, timezone
+from pathlib import Path
 
 from .config import APP_PORT, LAB_ROLE_NAME, PROJECT, REGION, tags
 
@@ -57,6 +59,79 @@ def _lab_role_arn() -> str:
 
 def _log(msg: str) -> None:
     print(f"[ecs] {msg}")
+
+
+def export_container_logs(output_dir: str = "logs", container_count: int | None = None) -> list[str]:
+    """Exporta logs do ECS para arquivos locais (um arquivo por container/task)."""
+    logs_client = _logs()
+    ecs_client = _ecs()
+    max_files = container_count or _MIN_TASKS
+    if max_files <= 0:
+        return []
+
+    task_arns = ecs_client.list_tasks(
+        cluster=_CLUSTER,
+        serviceName=_SERVICE,
+        desiredStatus="RUNNING",
+    ).get("taskArns", [])
+    task_ids = [arn.rsplit("/", 1)[-1] for arn in task_arns]
+
+    streams_resp = logs_client.describe_log_streams(
+        logGroupName=_LOG_GROUP,
+        orderBy="LastEventTime",
+        descending=True,
+        limit=max(50, max_files * 20),
+    )
+    stream_names = [s.get("logStreamName") for s in streams_resp.get("logStreams", []) if s.get("logStreamName")]
+    if not stream_names:
+        _log("nenhum stream encontrado para exportação.")
+        return []
+
+    if task_ids:
+        selected_streams = [name for name in stream_names if any(task_id in name for task_id in task_ids)]
+    else:
+        selected_streams = stream_names
+
+    if not selected_streams:
+        selected_streams = stream_names
+
+    selected_streams = selected_streams[:max_files]
+
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    saved_files = []
+    paginator = logs_client.get_paginator("filter_log_events")
+    for index, stream_name in enumerate(selected_streams, start=1):
+        events = []
+        for page in paginator.paginate(
+            logGroupName=_LOG_GROUP,
+            logStreamNames=[stream_name],
+            PaginationConfig={"PageSize": 1000},
+        ):
+            events.extend(page.get("events", []))
+
+        events.sort(key=lambda event: event.get("timestamp", 0))
+        task_id = next((tid for tid in task_ids if tid in stream_name), None)
+        suffix = task_id or f"stream-{index:02d}"
+        file_name = f"{PROJECT}-container-{suffix}.log"
+        out_file = out_dir / file_name
+
+        lines = [f"# stream={stream_name}"]
+        if not events:
+            lines.append("# sem eventos neste stream")
+        else:
+            for event in events:
+                timestamp_ms = event.get("timestamp", 0)
+                event_time = datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc).isoformat()
+                message = str(event.get("message", "")).rstrip("\n")
+                lines.append(f"[{event_time}] {message}")
+
+        out_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        saved_files.append(str(out_file))
+
+    _log(f"{len(saved_files)} arquivo(s) de log exportado(s) para '{out_dir}'.")
+    return saved_files
 
 
 # ---------------------------------------------------------------------------
@@ -139,6 +214,8 @@ def _register_task_definition(lab_role: str, ctx: dict) -> str:
                 {"name": "DB_NAME",     "value": ctx.get("db_name", "")},
                 {"name": "DB_USER",     "value": ctx.get("db_user", "")},
                 {"name": "DB_PASSWORD", "value": ctx.get("db_password", "")},
+                {"name": "PROJECT_ENV", "value": "production"},
+                {"name": "AWS_REGION",  "value": REGION},
             ],
             "logConfiguration": {
                 "logDriver": "awslogs",
