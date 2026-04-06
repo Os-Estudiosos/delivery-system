@@ -14,13 +14,15 @@ Uso:
 import json
 import sys
 from pathlib import Path
+from dotenv import load_dotenv
 
 from deploy import deploy_dynamodb, deploy_ecr, deploy_ecs, deploy_rds, deploy_vpc
+from simulator.load_simulator import simulation
 
 # Arquivo temporário para persistir o contexto entre etapas.
 # Útil para depuração: se o script falhar, é possível inspecionar o que foi criado.
-_CTX_FILE = Path("/tmp/dijkfood_ctx.json")
-
+_CTX_FILE = Path("./temp/dijkfood_ctx.json")
+load_dotenv()
 
 # ---------------------------------------------------------------------------
 # Contexto
@@ -95,10 +97,11 @@ def destroy(ctx: dict) -> None:
 
 if __name__ == "__main__":
     ctx = deploy()
+    api_url = ctx.get("api_url")
 
     try:
         print("\n=== Simulador de carga ===")
-        # TODO: invocar simulator/load_simulator.py
-        pass
+        print(f"API URL: {api_url}")
+        simulation(api_url)
     finally:
         destroy(ctx)

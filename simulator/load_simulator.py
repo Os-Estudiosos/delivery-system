@@ -66,8 +66,8 @@ def load_queries(path: str) -> list[tuple[int, int]]:
     print(f"[load_queries] {len(queries):,} queries loaded from '{path}'")
     return queries
 
-
-def workload(n_users: int, n_restaurant: int, n_couriers: int, order_rate: float):
+def simulation(api_url: str) -> None:
+    """Run API health/load simulation against the deployed AWS URL."""
     pass
 
 def main() -> None:

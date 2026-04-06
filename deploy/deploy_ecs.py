@@ -4,7 +4,7 @@ deploy_ecs.py — Cria e destrói o cluster ECS Fargate do DijkFood.
 Recursos gerenciados:
   - CloudWatch Log Group
   - ECS Cluster
-  - Task Definition (imagem placeholder nginx — substituir pela API real)
+    - Task Definition (imagem publicada no ECR)
   - ALB + Target Group + Listener
   - ECS Service
   - Application Auto Scaling (CPU target 70%)
@@ -17,8 +17,9 @@ Pode ser executado de forma independente para fins de teste:
 """
 
 import boto3
+import os
 
-from .config import LAB_ROLE_NAME, PROJECT, REGION, tags
+from .config import APP_PORT, LAB_ROLE_NAME, PROJECT, REGION, tags
 
 _CLUSTER        = f"{PROJECT}-cluster"
 _TASK_FAMILY    = f"{PROJECT}-task"
@@ -26,13 +27,16 @@ _SERVICE        = f"{PROJECT}-service"
 _ALB_NAME       = f"{PROJECT}-alb"
 _TG_NAME        = f"{PROJECT}-tg"
 _LOG_GROUP      = f"/ecs/{PROJECT}"
-_PLACEHOLDER    = "nginx:latest"   # substituir pela imagem ECR quando API estiver pronta
-_CONTAINER_PORT = 80               # nginx usa 80; mudar para APP_PORT quando usar API real
+_DEFAULT_IMAGE_TAG = "latest"
+_CONTAINER_PORT = APP_PORT
 _CPU            = "256"
 _MEMORY         = "512"
-_MIN_TASKS      = 1
-_MAX_TASKS      = 4
-_CPU_TARGET     = 70.0
+_MIN_TASKS      = int(os.getenv("ECS_MIN_TASKS", "1"))
+_MAX_TASKS      = int(os.getenv("ECS_MAX_TASKS", "4"))
+_CPU_TARGET     = float(os.getenv("ECS_CPU_TARGET", "70"))
+_MEMORY_TARGET  = float(os.getenv("ECS_MEMORY_TARGET", "75"))
+_SCALE_IN_COOLDOWN  = int(os.getenv("ECS_SCALE_IN_COOLDOWN", "60"))
+_SCALE_OUT_COOLDOWN = int(os.getenv("ECS_SCALE_OUT_COOLDOWN", "30"))
 
 
 def _ecs():
@@ -75,10 +79,13 @@ def create(ctx: dict) -> dict:
     _wait_service_stable()
     _register_autoscaling()
 
+    api_url = f"http://{alb_dns}"
+
     _log("pronto.")
     return {
         "alb_arn":      alb_arn,
         "alb_dns":      alb_dns,
+        "api_url":      api_url,
         "tg_arn":       tg_arn,
         "task_def_arn": task_def_arn,
     }
@@ -105,6 +112,14 @@ def _create_cluster() -> None:
 
 def _register_task_definition(lab_role: str, ctx: dict) -> str:
     ecs = _ecs()
+    image_uri = ctx.get("image_uri")
+    if not image_uri:
+        repo_uri = ctx.get("repo_uri")
+        if repo_uri:
+            image_uri = f"{repo_uri}:{ctx.get('image_tag', _DEFAULT_IMAGE_TAG)}"
+        else:
+            raise ValueError("ctx sem imagem para ECS. Esperado: image_uri ou repo_uri.")
+
     resp = ecs.register_task_definition(
         family=_TASK_FAMILY,
         networkMode="awsvpc",
@@ -115,7 +130,7 @@ def _register_task_definition(lab_role: str, ctx: dict) -> str:
         taskRoleArn=lab_role,
         containerDefinitions=[{
             "name":      PROJECT,
-            "image":     _PLACEHOLDER,
+            "image":     image_uri,
             "essential": True,
             "portMappings": [{"containerPort": _CONTAINER_PORT, "protocol": "tcp"}],
             "environment": [
@@ -219,7 +234,14 @@ def _create_service(subnet_ids: list[str], ecs_sg_id: str, tg_arn: str) -> None:
     ecs = _ecs()
     existing = ecs.describe_services(cluster=_CLUSTER, services=[_SERVICE])["services"]
     if existing and existing[0]["status"] != "INACTIVE":
-        _log(f"service '{_SERVICE}' já existe, reutilizando.")
+        ecs.update_service(
+            cluster=_CLUSTER,
+            service=_SERVICE,
+            taskDefinition=_TASK_FAMILY,
+            desiredCount=_MIN_TASKS,
+            forceNewDeployment=True,
+        )
+        _log(f"service '{_SERVICE}' já existe, atualizado para {_MIN_TASKS} tasks.")
         return
 
     ecs.create_service(
@@ -254,6 +276,13 @@ def _wait_service_stable() -> None:
 
 
 def _register_autoscaling() -> None:
+    if _MAX_TASKS < _MIN_TASKS:
+        raise ValueError(f"Configuração inválida de autoscaling: min {_MIN_TASKS} > max {_MAX_TASKS}")
+
+    if _MAX_TASKS == _MIN_TASKS:
+        _log(f"auto scaling desabilitado (min=max={_MIN_TASKS}).")
+        return
+
     aas         = _aas()
     resource_id = f"service/{_CLUSTER}/{_SERVICE}"
     lab_role    = _lab_role_arn()
@@ -266,20 +295,43 @@ def _register_autoscaling() -> None:
         MaxCapacity=_MAX_TASKS,
         RoleARN=lab_role,
     )
-    aas.put_scaling_policy(
-        PolicyName=f"{PROJECT}-cpu-scaling",
+    _put_target_tracking_policy(
+        policy_name=f"{PROJECT}-cpu-scaling",
+        resource_id=resource_id,
+        metric_type="ECSServiceAverageCPUUtilization",
+        target_value=_CPU_TARGET,
+    )
+    _put_target_tracking_policy(
+        policy_name=f"{PROJECT}-memory-scaling",
+        resource_id=resource_id,
+        metric_type="ECSServiceAverageMemoryUtilization",
+        target_value=_MEMORY_TARGET,
+    )
+    _log(
+        "auto scaling registrado "
+        f"(CPU {_CPU_TARGET}%, MEM {_MEMORY_TARGET}%, min {_MIN_TASKS}, max {_MAX_TASKS})."
+    )
+
+
+def _put_target_tracking_policy(
+    policy_name: str,
+    resource_id: str,
+    metric_type: str,
+    target_value: float,
+) -> None:
+    _aas().put_scaling_policy(
+        PolicyName=policy_name,
         ServiceNamespace="ecs",
         ResourceId=resource_id,
         ScalableDimension="ecs:service:DesiredCount",
         PolicyType="TargetTrackingScaling",
         TargetTrackingScalingPolicyConfiguration={
-            "TargetValue": _CPU_TARGET,
-            "PredefinedMetricSpecification": {"PredefinedMetricType": "ECSServiceAverageCPUUtilization"},
-            "ScaleInCooldown":  60,
-            "ScaleOutCooldown": 30,
+            "TargetValue": target_value,
+            "PredefinedMetricSpecification": {"PredefinedMetricType": metric_type},
+            "ScaleInCooldown": _SCALE_IN_COOLDOWN,
+            "ScaleOutCooldown": _SCALE_OUT_COOLDOWN,
         },
     )
-    _log(f"auto scaling registrado (CPU target {_CPU_TARGET}%, min {_MIN_TASKS}, max {_MAX_TASKS}).")
 
 
 # ---------------------------------------------------------------------------
