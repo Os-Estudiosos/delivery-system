@@ -106,6 +106,15 @@ async def _find_delivery_by_order_id(session, order_id: int):
     return None
 
 
+async def _find_any_courier_id(session):
+    status_code, couriers = await fetch(session, 'GET', f"{BASE_URL}/courier/")
+    if status_code not in (200, 201) or not isinstance(couriers, list) or not couriers:
+        return None
+
+    courier = random.choice(couriers)
+    return courier.get("id")
+
+
 def _remaining_statuses(current_status: str | None) -> list[str]:
     if current_status is None:
         return STATUS_FLOW
@@ -119,22 +128,6 @@ def _remaining_statuses(current_status: str | None) -> list[str]:
 async def simulate_order_lifecycle(session, seed_ids, debug=False):
     """Fase 2: Simula o ciclo de vida completo de um pedido no RDS."""
     try:
-        courier_payload = {
-            "name": f"Entregador-{time.perf_counter_ns()}",
-            "vehicle": "MOTORCYCLE",
-            "lat": -23.5500 + random.uniform(-0.002, 0.002),
-            "lon": -46.6330 + random.uniform(-0.002, 0.002),
-        }
-        courier_status, courier_data = await fetch(session, 'POST', f"{BASE_URL}/courier/", courier_payload)
-        if courier_status not in (200, 201) or not courier_data:
-            if debug: print(f"  [ERRO] Falha ao criar courier: {courier_status}")
-            return False
-
-        fallback_courier_id = courier_data.get("id")
-        if fallback_courier_id is None:
-            if debug: print(f"  [ERRO] Courier sem ID")
-            return False
-
         # 1. Cria Pedido
         order_payload = {
             "restaurant_id": seed_ids["restaurant_id"],
@@ -161,18 +154,38 @@ async def simulate_order_lifecycle(session, seed_ids, debug=False):
         selected_courier = current_order.get("courier") or {}
         selected_courier_id = selected_courier.get("id")
 
+        # Tenta criar courier apenas quando o pedido ainda não tem courier associado.
+        if selected_courier_id is None:
+            courier_payload = {
+                "name": f"Entregador-{time.perf_counter_ns()}",
+                "vehicle": "MOTORCYCLE",
+                "lat": -23.5500 + random.uniform(-0.002, 0.002),
+                "lon": -46.6330 + random.uniform(-0.002, 0.002),
+            }
+            courier_status, courier_data = await fetch(session, 'POST', f"{BASE_URL}/courier/", courier_payload)
+            if courier_status in (200, 201) and courier_data:
+                selected_courier_id = courier_data.get("id")
+            else:
+                if debug:
+                    print(f"  [ERRO] Falha ao criar courier: status={courier_status}, response={courier_data}")
+                selected_courier_id = await _find_any_courier_id(session)
+
+        if selected_courier_id is None:
+            if debug: print("  [ERRO] Não foi possível obter courier para o pedido")
+            return False
+
         # 2. Cria Delivery quando ainda não existe; se já existir, reaproveita.
         delivery_status, delivery_data = await fetch(
             session,
             'POST',
             f"{BASE_URL}/delivery/",
-            {"order_id": order_id, "courier_id": fallback_courier_id},
+            {"order_id": order_id, "courier_id": selected_courier_id},
         )
 
         if delivery_status in (200, 201) and delivery_data:
             delivery_id = delivery_data.get("id")
             delivery_courier = delivery_data.get("courier") or {}
-            selected_courier_id = delivery_courier.get("id", fallback_courier_id)
+            selected_courier_id = delivery_courier.get("id", selected_courier_id)
             current_status = None
         elif delivery_status == 409:
             existing_delivery = await _find_delivery_by_order_id(session, order_id)
@@ -223,25 +236,13 @@ async def worker(name, session, queue, seed_ids, stats, debug=False):
         except asyncio.CancelledError:
             break
 
-async def run_load_test(rps, duration, debug_first=False):
+async def run_load_test(rps, duration, seed_ids, debug_first=False):
     """Orquestra o ataque com a taxa de RPS desejada."""
     print(f"\nIniciando teste de carga: {rps} RPS por {duration} segundos...")
     latencies.clear()
     
     connector = aiohttp.TCPConnector(limit=0) # Remove limite de conexões
     async with aiohttp.ClientSession(connector=connector) as session:
-        seed_ids = {}
-        # Se for o primeiro teste, faz o seed
-        if rps == 10:
-            seed_ids = await seed_data(session)
-        else:
-            # Fallback caso o teste seja executado isoladamente.
-            seed_ids = {
-                "restaurant_id": 1,
-                "user_id": 1,
-                "item_id": 1,
-            }
-            
         queue = asyncio.Queue()
         stats = {"orders_completed": 0, "orders_scheduled": 0}
         
@@ -287,16 +288,20 @@ async def main(url: str):
     BASE_URL = url
     
     print("--- DijkFood Load Simulator ---")
+    connector = aiohttp.TCPConnector(limit=0)
+    async with aiohttp.ClientSession(connector=connector) as session:
+        seed_ids = await seed_data(session)
+
     # Cenário 1: Operação Normal (com debug da primeira requisição)
-    await run_load_test(rps=10, duration=10, debug_first=True)
+    await run_load_test(rps=10, duration=10, seed_ids=seed_ids, debug_first=True)
     
     # Cenário 2: Pico (Almoço/Jantar)
-    await run_load_test(rps=50, duration=10, debug_first=False)
+    await run_load_test(rps=50, duration=10, seed_ids=seed_ids, debug_first=False)
     
     # Cenário 3: Evento Especial (Requisito Máximo)
     print("\nAguardando 5s antes do teste de estresse máximo...")
     await asyncio.sleep(5)
-    await run_load_test(rps=200, duration=10, debug_first=False)
+    await run_load_test(rps=200, duration=10, seed_ids=seed_ids, debug_first=False)
 
 if __name__ == "__main__":
     # Fallback se rodar o simulador solto

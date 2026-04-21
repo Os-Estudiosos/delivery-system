@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 import datetime
 from decimal import Decimal
@@ -101,6 +101,12 @@ def create_courier(courier: CourierCreate, session: Session = Depends(get_sessio
             status_code=status.HTTP_409_CONFLICT,
             detail='Courier already exists or payload violates constraints.',
         )
+    except SQLAlchemyError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f'Courier payload invalid or database rejected operation: {str(exc)}',
+        )
 
     session.refresh(db_courier)
     return _to_courier_response(db_courier)
@@ -126,6 +132,12 @@ def update_courier(courier_id: int, courier: CourierUpdate, session: Session = D
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail='Courier already exists or payload violates constraints.',
+        )
+    except SQLAlchemyError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f'Courier payload invalid or database rejected operation: {str(exc)}',
         )
 
     session.refresh(db_courier)
