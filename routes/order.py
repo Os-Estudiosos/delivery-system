@@ -291,14 +291,6 @@ def create_order(order: OrderCreate, session: Session = Depends(get_session), gr
             OrderItem(item=db_item, quantity=quantity)
         )
 
-    # Auto-assignment não pode quebrar criação do pedido.
-    best_courier = _pick_nearest_available_courier(db_order, graph, session)
-    if best_courier:
-        db_delivery = Delivery(order=db_order, courier=best_courier)
-        db_order.delivery = db_delivery
-        db_event = Event(status=OrderStatus.CONFIRMED, delivery=db_delivery)
-        session.add(db_event)
-
     session.add(db_order)
 
     try:
@@ -311,6 +303,22 @@ def create_order(order: OrderCreate, session: Session = Depends(get_session), gr
         )
 
     session.refresh(db_order)
+
+    # Auto-assignment não pode quebrar criação do pedido.
+    best_courier = _pick_nearest_available_courier(db_order, graph, session)
+    if best_courier:
+        try:
+            db_delivery = Delivery(order_id=db_order.id, courier_id=best_courier.id)
+            session.add(db_delivery)
+            session.flush()
+
+            db_event = Event(status=OrderStatus.CONFIRMED, delivery_id=db_delivery.id)
+            session.add(db_event)
+            session.commit()
+            session.refresh(db_order)
+        except Exception:
+            session.rollback()
+
     return _to_order_response(db_order)
 
 
