@@ -116,98 +116,114 @@ def _remaining_statuses(current_status: str | None) -> list[str]:
     index = STATUS_FLOW.index(current_status)
     return STATUS_FLOW[index + 1:]
 
-async def simulate_order_lifecycle(session, seed_ids):
+async def simulate_order_lifecycle(session, seed_ids, debug=False):
     """Fase 2: Simula o ciclo de vida completo de um pedido no RDS."""
-    courier_payload = {
-        "name": f"Entregador-{time.perf_counter_ns()}",
-        "vehicle": "MOTORCYCLE",
-        "lat": -23.5500 + random.uniform(-0.002, 0.002),
-        "lon": -46.6330 + random.uniform(-0.002, 0.002),
-    }
-    courier_status, courier_data = await fetch(session, 'POST', f"{BASE_URL}/courier/", courier_payload)
-    if courier_status not in (200, 201) or not courier_data:
-        return False
-
-    fallback_courier_id = courier_data.get("id")
-    if fallback_courier_id is None:
-        return False
-
-    # 1. Cria Pedido
-    order_payload = {
-        "restaurant_id": seed_ids["restaurant_id"],
-        "user_id": seed_ids["user_id"],
-        "items": [{"item_id": seed_ids["item_id"], "quantity": 2}],
-    }
-    order_status, order_data = await fetch(session, 'POST', f"{BASE_URL}/order/", order_payload)
-    if order_status not in (200, 201) or not order_data:
-        return False
-
-    order_id = order_data.get("id")
-    if order_id is None:
-        return False
-
-    # Busca estado atual do pedido para continuar do ponto correto.
-    order_get_status, current_order = await fetch(session, 'GET', f"{BASE_URL}/order/{order_id}")
-    if order_get_status not in (200, 201) or not current_order:
-        return False
-
-    current_status = current_order.get("status")
-    selected_courier = current_order.get("courier") or {}
-    selected_courier_id = selected_courier.get("id")
-
-    # 2. Cria Delivery quando ainda não existe; se já existir, reaproveita.
-    delivery_status, delivery_data = await fetch(
-        session,
-        'POST',
-        f"{BASE_URL}/delivery/",
-        {"order_id": order_id, "courier_id": fallback_courier_id},
-    )
-
-    if delivery_status in (200, 201) and delivery_data:
-        delivery_id = delivery_data.get("id")
-        delivery_courier = delivery_data.get("courier") or {}
-        selected_courier_id = delivery_courier.get("id", fallback_courier_id)
-        current_status = None
-    elif delivery_status == 409:
-        existing_delivery = await _find_delivery_by_order_id(session, order_id)
-        if not existing_delivery:
+    try:
+        courier_payload = {
+            "name": f"Entregador-{time.perf_counter_ns()}",
+            "vehicle": "MOTORCYCLE",
+            "lat": -23.5500 + random.uniform(-0.002, 0.002),
+            "lon": -46.6330 + random.uniform(-0.002, 0.002),
+        }
+        courier_status, courier_data = await fetch(session, 'POST', f"{BASE_URL}/courier/", courier_payload)
+        if courier_status not in (200, 201) or not courier_data:
+            if debug: print(f"  [ERRO] Falha ao criar courier: {courier_status}")
             return False
 
-        delivery_id = existing_delivery.get("id")
-        delivery_courier = existing_delivery.get("courier") or {}
-        if delivery_courier.get("id") is not None:
-            selected_courier_id = delivery_courier.get("id")
-    else:
-        return False
-
-    if delivery_id is None or selected_courier_id is None:
-        return False
-
-    # 3. Dispara o movimento do entregador no DynamoDB em background (não bloqueia o RDS)
-    asyncio.create_task(simulate_courier_movement(session, selected_courier_id, delivery_id))
-
-    # 4. Avança status no RDS
-    for next_status in _remaining_statuses(current_status):
-        status_code, _ = await fetch(session, 'PATCH', f"{BASE_URL}/delivery/{delivery_id}/status", {"status": next_status})
-        if status_code not in (200, 201):
+        fallback_courier_id = courier_data.get("id")
+        if fallback_courier_id is None:
+            if debug: print(f"  [ERRO] Courier sem ID")
             return False
-        await asyncio.sleep(0.5) # Simula o tempo real passando
 
-    return True
+        # 1. Cria Pedido
+        order_payload = {
+            "restaurant_id": seed_ids["restaurant_id"],
+            "user_id": seed_ids["user_id"],
+            "items": [{"item_id": seed_ids["item_id"], "quantity": 2}],
+        }
+        order_status, order_data = await fetch(session, 'POST', f"{BASE_URL}/order/", order_payload)
+        if order_status not in (200, 201) or not order_data:
+            if debug: print(f"  [ERRO] Falha ao criar order: {order_status}")
+            return False
 
-async def worker(name, session, queue, seed_ids, stats):
+        order_id = order_data.get("id")
+        if order_id is None:
+            if debug: print(f"  [ERRO] Order sem ID")
+            return False
+
+        # Busca estado atual do pedido para continuar do ponto correto.
+        order_get_status, current_order = await fetch(session, 'GET', f"{BASE_URL}/order/{order_id}")
+        if order_get_status not in (200, 201) or not current_order:
+            if debug: print(f"  [ERRO] Falha ao GET order/{order_id}: {order_get_status}")
+            return False
+
+        current_status = current_order.get("status")
+        selected_courier = current_order.get("courier") or {}
+        selected_courier_id = selected_courier.get("id")
+
+        # 2. Cria Delivery quando ainda não existe; se já existir, reaproveita.
+        delivery_status, delivery_data = await fetch(
+            session,
+            'POST',
+            f"{BASE_URL}/delivery/",
+            {"order_id": order_id, "courier_id": fallback_courier_id},
+        )
+
+        if delivery_status in (200, 201) and delivery_data:
+            delivery_id = delivery_data.get("id")
+            delivery_courier = delivery_data.get("courier") or {}
+            selected_courier_id = delivery_courier.get("id", fallback_courier_id)
+            current_status = None
+        elif delivery_status == 409:
+            existing_delivery = await _find_delivery_by_order_id(session, order_id)
+            if not existing_delivery:
+                if debug: print(f"  [ERRO] 409 mas não encontrou delivery existente para order/{order_id}")
+                return False
+
+            delivery_id = existing_delivery.get("id")
+            delivery_courier = existing_delivery.get("courier") or {}
+            if delivery_courier.get("id") is not None:
+                selected_courier_id = delivery_courier.get("id")
+        else:
+            if debug: print(f"  [ERRO] Falha ao criar delivery: {delivery_status}")
+            return False
+
+        if delivery_id is None or selected_courier_id is None:
+            if debug: print(f"  [ERRO] delivery_id={delivery_id}, selected_courier_id={selected_courier_id}")
+            return False
+
+        # 3. Dispara o movimento do entregador no DynamoDB em background (não bloqueia o RDS)
+        asyncio.create_task(simulate_courier_movement(session, selected_courier_id, delivery_id))
+
+        # 4. Avança status no RDS
+        statuses = _remaining_statuses(current_status)
+        if debug: print(f"  [INFO] Order {order_id}: current_status={current_status}, remaining={statuses}")
+        
+        for next_status in statuses:
+            status_code, response_data = await fetch(session, 'PATCH', f"{BASE_URL}/delivery/{delivery_id}/status", {"status": next_status})
+            if status_code not in (200, 201):
+                if debug: print(f"    [ERRO] PATCH status {next_status}: {status_code}, response={response_data}")
+                return False
+            await asyncio.sleep(0.5) # Simula o tempo real passando
+
+        return True
+    except Exception as e:
+        if debug: print(f"  [EXCEÇÃO] {e}")
+        return False
+
+async def worker(name, session, queue, seed_ids, stats, debug=False):
     """Consome requisições da fila o mais rápido possível."""
     while True:
         try:
             await queue.get()
-            success = await simulate_order_lifecycle(session, seed_ids)
+            success = await simulate_order_lifecycle(session, seed_ids, debug=debug)
             if success:
                 stats["orders_completed"] += 1
             queue.task_done()
         except asyncio.CancelledError:
             break
 
-async def run_load_test(rps, duration):
+async def run_load_test(rps, duration, debug_first=False):
     """Orquestra o ataque com a taxa de RPS desejada."""
     print(f"\nIniciando teste de carga: {rps} RPS por {duration} segundos...")
     latencies.clear()
@@ -230,13 +246,18 @@ async def run_load_test(rps, duration):
         stats = {"orders_completed": 0, "orders_scheduled": 0}
         
         # Cria workers para processar a carga
-        workers = [asyncio.create_task(worker(f'w-{i}', session, queue, seed_ids, stats)) for i in range(rps * 2)]
+        workers = [asyncio.create_task(worker(f'w-{i}', session, queue, seed_ids, stats, debug=(i==0 and debug_first))) for i in range(rps * 2)]
         
         start_time = time.time()
+        request_count = 0
         while time.time() - start_time < duration:
             for _ in range(rps):
                 queue.put_nowait(1)
                 stats["orders_scheduled"] += 1
+                request_count += 1
+                # Only debug first request
+                if debug_first and request_count == 1:
+                    debug_first = False
             await asyncio.sleep(1) # Aguarda 1 segundo e injeta mais carga
             
         await queue.join()
@@ -266,16 +287,16 @@ async def main(url: str):
     BASE_URL = url
     
     print("--- DijkFood Load Simulator ---")
-    # Cenário 1: Operação Normal
-    await run_load_test(rps=10, duration=10)
+    # Cenário 1: Operação Normal (com debug da primeira requisição)
+    await run_load_test(rps=10, duration=10, debug_first=True)
     
     # Cenário 2: Pico (Almoço/Jantar)
-    await run_load_test(rps=50, duration=10)
+    await run_load_test(rps=50, duration=10, debug_first=False)
     
     # Cenário 3: Evento Especial (Requisito Máximo)
     print("\nAguardando 5s antes do teste de estresse máximo...")
     await asyncio.sleep(5)
-    await run_load_test(rps=200, duration=10)
+    await run_load_test(rps=200, duration=10, debug_first=False)
 
 if __name__ == "__main__":
     # Fallback se rodar o simulador solto
