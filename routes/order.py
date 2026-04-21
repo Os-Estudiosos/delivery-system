@@ -6,11 +6,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from boto3.dynamodb.conditions import Key
 import osmnx as ox
+import networkx as nx
 
 from database.connection import get_graph, get_session, get_session_dynamo
 from database.models import Courier, Delivery, Event, Item, Order, OrderItem, OrderStatus, Restaurant, User, VehicleType
-from utils.cheapest_path import dijkstra
-
 router = APIRouter(prefix='/order', tags=['order'])
 
 
@@ -93,12 +92,18 @@ def _is_courier_available(courier: Courier) -> bool:
 
 
 def _pick_nearest_available_courier(order: Order, graph, session: Session) -> Courier | None:
+    if graph is None:
+        return None
+
     couriers = session.query(Courier).all()
     if not couriers:
         return None
 
-    restaurant_node = ox.distance.nearest_nodes(graph, order.restaurant.lon, order.restaurant.lat)
-    dists = dijkstra(graph, restaurant_node)
+    try:
+        restaurant_node = ox.distance.nearest_nodes(graph, order.restaurant.lon, order.restaurant.lat)
+        dists = nx.single_source_dijkstra_path_length(graph, restaurant_node, weight='length')
+    except Exception:
+        return None
 
     best_courier = None
     best_dist = float("inf")
@@ -286,6 +291,7 @@ def create_order(order: OrderCreate, session: Session = Depends(get_session), gr
             OrderItem(item=db_item, quantity=quantity)
         )
 
+    # Auto-assignment não pode quebrar criação do pedido.
     best_courier = _pick_nearest_available_courier(db_order, graph, session)
     if best_courier:
         db_delivery = Delivery(order=db_order, courier=best_courier)
