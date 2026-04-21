@@ -22,3 +22,7 @@ app.include_router(courier_router)
 app.include_router(delivery_router)
 app.include_router(item_router)
 app.include_router(order_router)
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok", "message": "DijkFood API is running!"}

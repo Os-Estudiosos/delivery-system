@@ -1,5 +1,6 @@
 services:
     api:
+        image: delivery-system/dijkfood
         build:
             context: .
             dockerfile: Dockerfile.dev
@@ -12,7 +13,7 @@ services:
         volumes:
             - .:/app
             - /app/.venv
-            - ~/.aws:/root/.aws # AWS credentials
+            - ~/.aws:/root/.aws
         env_file:
             - .env
 

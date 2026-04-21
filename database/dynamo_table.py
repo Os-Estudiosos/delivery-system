@@ -7,7 +7,7 @@ load_dotenv()
 
 # AWS Configs
 REGION     = os.environ.get("AWS_REGION", "us-east-1")
-TABLE_NAME = os.environ.get("DYNAMO_TABLE_NAME", "dynamo-dijsktra-food")
+TABLE_NAME = os.environ.get("DYNAMO_TABLE", "dynamo-dijsktra-food")
 GSI_TYPE   = os.environ.get("GSI_TYPE", "gsi-type")
 GSI_STATUS = os.environ.get("GSI_STATUS", "gsi-status")
 N_COURIERS = 500

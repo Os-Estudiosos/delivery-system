@@ -2,7 +2,6 @@ import osmnx as ox
 from pathlib import Path
 
 
-
 def load_graph_cache(graph_path: Path):
     if graph_path.exists():
         print(f"[cache] Loading graph from '{graph_path}' …")

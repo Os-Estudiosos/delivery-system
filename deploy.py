@@ -1,104 +1,55 @@
 #!/usr/bin/env python3
-"""
-deploy.py — Orquestrador de implantação DijkFood na AWS.
-
-Fluxo completo (sem intervenção manual):
-  1. Cria recursos:  VPC → ECR → RDS → DynamoDB → ECS
-  2. Executa o simulador de carga
-  3. Destrói todos os recursos
-
-Uso:
-  python deploy.py
-"""
-
+import asyncio
+import simulator
+import destroy
 import json
 import sys
 from pathlib import Path
 
-from deploy import deploy_dynamodb, deploy_ecr, deploy_ecs, deploy_rds, deploy_vpc
+# Importando os módulos da nossa infraestrutura
+from infranova import network, databases, compute
 
-# Arquivo temporário para persistir o contexto entre etapas.
-# Útil para depuração: se o script falhar, é possível inspecionar o que foi criado.
-_CTX_FILE = Path("/tmp/dijkfood_ctx.json")
+# Arquivo para salvar as saídas (o simulador de carga vai precisar ler isso depois)
+CTX_FILE = Path("deploy_context.json")
 
-
-# ---------------------------------------------------------------------------
-# Contexto
-# ---------------------------------------------------------------------------
-
-def _save_ctx(ctx: dict) -> None:
-    _CTX_FILE.write_text(json.dumps(ctx, indent=2))
-
-
-# ---------------------------------------------------------------------------
-# Deploy
-# ---------------------------------------------------------------------------
-
-def deploy() -> dict:
-    """Cria todos os recursos AWS em ordem de dependência."""
+def deploy():
+    print("Iniciando o Deploy Automático - DijkFood\n")
     ctx = {}
-
-    steps = [
-        ("VPC",       deploy_vpc.create),
-        ("ECR",       deploy_ecr.create),
-        ("RDS",       deploy_rds.create),
-        ("DynamoDB",  deploy_dynamodb.create),
-        ("ECS",       deploy_ecs.create),
-    ]
-
-    for i, (name, create_fn) in enumerate(steps, start=1):
-        print(f"\n=== [{i}/{len(steps)}] {name} ===")
-        try:
-            result = create_fn(ctx)
-            ctx.update(result)
-            _save_ctx(ctx)
-        except Exception as e:
-            print(f"\nErro ao criar {name}: {e}")
-            print("Iniciando rollback dos recursos já criados...")
-            destroy(ctx)
-            sys.exit(1)
-
-    print("\nDeploy concluído.")
-    return ctx
-
-
-# ---------------------------------------------------------------------------
-# Destroy
-# ---------------------------------------------------------------------------
-
-def destroy(ctx: dict) -> None:
-    """Destrói todos os recursos em ordem inversa à criação."""
-    print("\n=== Destruindo recursos ===")
-
-    steps = [
-        ("ECS",       deploy_ecs.destroy),
-        ("DynamoDB",  deploy_dynamodb.destroy),
-        ("RDS",       deploy_rds.destroy),
-        ("ECR",       deploy_ecr.destroy),
-        ("VPC",       deploy_vpc.destroy),
-    ]
-
-    for name, destroy_fn in steps:
-        print(f"  → {name}")
-        try:
-            destroy_fn(ctx)
-        except Exception as e:
-            print(f"  aviso ao destruir {name}: {e}")
-
-    _CTX_FILE.unlink(missing_ok=True)
-    print("Recursos destruídos.")
-
-
-# ---------------------------------------------------------------------------
-# Entrypoint
-# ---------------------------------------------------------------------------
+    
+    try:
+        # 1. Configura a Rede
+        network_ctx = network.setup_network()
+        ctx.update(network_ctx)
+        
+        # 2. Configura os Bancos de Dados e Storage
+        db_ctx = databases.setup_databases(network_ctx)
+        ctx.update(db_ctx)
+        
+        # 3. Faz o Build, Push e sobe os Containers no ECS
+        compute_ctx = compute.setup_compute(network_ctx, db_ctx)
+        ctx.update(compute_ctx)
+        
+        # Salva o contexto
+        CTX_FILE.write_text(json.dumps(ctx, indent=4))
+        print(f"URL da API: http://{ctx['alb_dns']}")
+        
+        # 4. Executa o Simulador de Carga
+        print("INICIANDO EXPERIMENTO DE CARGA AUTOMÁTICO")
+        asyncio.run(simulator.main())
+        
+        return ctx
+        
+    except Exception as e:
+        print(f"\nErro durante o deploy ou simulação: {e}")
+        # Se der erro no meio, ele também deve destruir o que já criou
+        raise e 
+        
+    finally:
+        # 5. Destruição Obrigatória (Independente de sucesso ou erro)
+        print("\n==================================================")
+        print("🧹 INICIANDO DESTRUIÇÃO DOS RECURSOS")
+        print("==================================================")
+        destroy.destroy_all()
 
 if __name__ == "__main__":
-    ctx = deploy()
-
-    try:
-        print("\n=== Simulador de carga ===")
-        # TODO: invocar simulator/load_simulator.py
-        pass
-    finally:
-        destroy(ctx)
+    deploy()

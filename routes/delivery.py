@@ -151,6 +151,15 @@ def create_delivery(delivery: DeliveryCreate, session: Session = Depends(get_ses
         courier=db_courier,
     )
 
+    # Verifica se o entregador já tem uma entrega em andamento
+    active_delivery = session.query(Delivery).join(Event).filter(
+        Delivery.courier_id == delivery.courier_id,
+        Event.status.notin_([OrderStatus.DELIVERED])
+    ).first()
+
+    if active_delivery:
+        raise HTTPException(status_code=400, detail="Courier is currently busy with another delivery.")
+
     session.add(db_delivery)
 
     try:
