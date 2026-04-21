@@ -276,13 +276,14 @@ def test_order_crud(client: TestClient) -> None:
 def test_order_create_with_invalid_user_returns_404(client: TestClient) -> None:
     kitchen = _create_kitchen(client, "Greek")
     restaurant = _create_restaurant(client, kitchen["id"], "Greek House")
+    item = _create_item(client, restaurant["id"], "Gyros", 33.0)
 
     response = client.post(
         "/order/",
         json={
             "restaurant_id": restaurant["id"],
             "user_id": 999,
-            "items": [],
+            "items": [{"item_id": item["id"], "quantity": 1}],
         },
     )
 

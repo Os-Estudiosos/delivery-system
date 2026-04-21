@@ -1,12 +1,15 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from boto3.dynamodb.conditions import Key
+import osmnx as ox
 
-from database.connection import get_session
-from database.models import Item, Order, OrderItem, OrderStatus, Restaurant, User, VehicleType
+from database.connection import get_graph, get_session, get_session_dynamo
+from database.models import Courier, Delivery, Event, Item, Order, OrderItem, OrderStatus, Restaurant, User, VehicleType
+from utils.cheapest_path import dijkstra
 
 router = APIRouter(prefix='/order', tags=['order'])
 
@@ -36,13 +39,13 @@ class CourierReference(BaseModel):
 
 class OrderItemCreate(BaseModel):
     item_id: int
-    quantity: int = 1
+    quantity: int = Field(default=1, ge=1)
 
 
 class OrderCreate(BaseModel):
     restaurant_id: int
     user_id: int
-    items: list[OrderItemCreate] = []
+    items: list[OrderItemCreate] = Field(min_length=1)
 
 
 class OrderUpdate(BaseModel):
@@ -64,6 +67,7 @@ class OrderResponse(BaseModel):
     items: list[OrderItemResponse]
     courier: CourierReference | None
     status: OrderStatus | None
+    courier_location: dict | None
 
 
 class OrderEventResponse(BaseModel):
@@ -73,7 +77,71 @@ class OrderEventResponse(BaseModel):
     delivery_id: int
 
 
-def _to_order_response(order: Order) -> OrderResponse:
+def _get_latest_delivery_status(delivery: Delivery) -> OrderStatus | None:
+    if not delivery.events:
+        return None
+
+    latest_event = max(delivery.events, key=lambda event: (event.updated_at, event.id))
+    return latest_event.status
+
+
+def _is_courier_available(courier: Courier) -> bool:
+    return all(
+        _get_latest_delivery_status(delivery) == OrderStatus.DELIVERED
+        for delivery in courier.deliveries
+    )
+
+
+def _pick_nearest_available_courier(order: Order, graph, session: Session) -> Courier | None:
+    couriers = session.query(Courier).all()
+    if not couriers:
+        return None
+
+    restaurant_node = ox.distance.nearest_nodes(graph, order.restaurant.lon, order.restaurant.lat)
+    dists = dijkstra(graph, restaurant_node)
+
+    best_courier = None
+    best_dist = float("inf")
+
+    for courier in couriers:
+        if not _is_courier_available(courier):
+            continue
+
+        courier_node = ox.distance.nearest_nodes(graph, courier.lon, courier.lat)
+        dist = dists.get(courier_node, float("inf"))
+
+        if dist < best_dist:
+            best_dist = dist
+            best_courier = courier
+
+    return best_courier
+
+
+def _get_last_courier_location(courier_id: int, table) -> dict | None:
+    if table is None:
+        return None
+
+    response = table.query(
+        KeyConditionExpression=Key("courier_id").eq(courier_id),
+        ScanIndexForward=False,
+        Limit=1,
+    )
+
+    items = response.get("Items", [])
+    if not items:
+        return None
+
+    item = items[0]
+    return {
+        "courier_id": int(item["courier_id"]),
+        "delivery_id": item["delivery_id"],
+        "lat_courier": float(item["lat_courier"]),
+        "lon_courier": float(item["lon_courier"]),
+        "timestamp": item["timestamp"],
+    }
+
+
+def _to_order_response(order: Order, table=None) -> OrderResponse:
     latest_event = (
         max(order.delivery.events, key=lambda event: (event.updated_at, event.id))
         if order.delivery and order.delivery.events
@@ -115,6 +183,11 @@ def _to_order_response(order: Order) -> OrderResponse:
         ],
         courier=courier,
         status=latest_event.status if latest_event else None,
+        courier_location=(
+            _get_last_courier_location(order.delivery.courier.id, table)
+            if order.delivery
+            else None
+        ),
     )
 
 
@@ -192,13 +265,13 @@ def get_orders(session: Session = Depends(get_session)):
 
 
 @router.get('/{order_id}', tags=['get order by id'], response_model=OrderResponse)
-def get_order(order_id: int, session: Session = Depends(get_session)):
+def get_order(order_id: int, session: Session = Depends(get_session), table=Depends(get_session_dynamo)):
     order = _get_order_or_404(order_id, session)
-    return _to_order_response(order)
+    return _to_order_response(order, table)
 
 
 @router.post('/', tags=['create order'], response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
-def create_order(order: OrderCreate, session: Session = Depends(get_session)):
+def create_order(order: OrderCreate, session: Session = Depends(get_session), graph=Depends(get_graph)):
     db_restaurant = _get_restaurant_or_404(order.restaurant_id, session)
     db_user = _get_user_or_404(order.user_id, session)
     valid_items = _validate_order_items(order.items, db_restaurant.id, session)
@@ -212,6 +285,13 @@ def create_order(order: OrderCreate, session: Session = Depends(get_session)):
         db_order.items.append(
             OrderItem(item=db_item, quantity=quantity)
         )
+
+    best_courier = _pick_nearest_available_courier(db_order, graph, session)
+    if best_courier:
+        db_delivery = Delivery(order=db_order, courier=best_courier)
+        db_order.delivery = db_delivery
+        db_event = Event(status=OrderStatus.CONFIRMED, delivery=db_delivery)
+        session.add(db_event)
 
     session.add(db_order)
 
