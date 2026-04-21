@@ -39,6 +39,8 @@
 
 O presente relatório detalha a arquitetura, as decisões de projeto e os resultados de implantação da plataforma DijkFood. O sistema foi desenvolvido para gerenciar o ciclo de vida de pedidos de delivery, calculando rotas no grafo viário de São Paulo através da biblioteca `osmnx` e hospedado de forma totalmente automatizada na nuvem AWS.
 
+=== fazer diagrama
+
 = Fluxo de Dados
 
 A arquitetura foi projetada para garantir separação de responsabilidades, alta disponibilidade e resiliência a picos de tráfego:
@@ -69,6 +71,11 @@ A arquitetura foi projetada para garantir separação de responsabilidades, alta
 - *Opção Escolhida:* Cache do grafo de São Paulo no Amazon S3 e implementação nativa do Algoritmo de Dijkstra.
 - *Justificativa:* O download via OSMnx pode levar minutos, o que faria o Load Balancer identificar a nova instância ECS como defeituosa e encerrá-la. Ao criar um cache de backup no S3, o contêiner inicializa o grafo em disco em poucos segundos, permitindo que a API atenda os pedidos atômicos sem impacto de latência.
 
+== Segurança e Isolamento de Rede (Security Groups)
+- *Requisito:* Os bancos de dados não devem estar expostos publicamente, e a comunicação deve ser restrita e controlada.
+- *Decisão:* Implementação de Security Groups em cascata.
+- *Justificativa:* O Application Load Balancer atua como o único ponto de entrada acessível via Internet. Os contêineres ECS aceitam tráfego exclusivamente originado pelo Security Group do ALB. Da mesma forma, a instância do RDS PostgreSQL foi configurada para não possuir IP público (`PubliclyAccessible=False`) e seu Security Group aceita conexões apenas do Security Group do ECS na porta 5432. Esse isolamento mitiga vetores de ataque externos direto à camada de dados.
+
 = Validação dos Requisitos Funcionais
 
 A API REST implementada atende estritamente às regras de negócio mapeadas:
@@ -94,6 +101,13 @@ Os testes foram executados utilizando um simulador assíncrono desenvolvido com 
 
 Os resultados demonstram eficiência no isolamento das cargas. O estrangulamento da computação causado pelo Dijkstra não propagou latência para o cadastro e a gravação atômica da entrega, atendendo os requisitos não-funcionais com margem segura sob condições de estresse elevado.
 
+= Desafios Encontrados e Soluções
+
+Durante a fase de implantação e testes de estresse, dois desafios arquiteturais se destacaram, exigindo adaptações na infraestrutura como código (IaC):
+
+1. *Drenagem de Conexões no ECS (Connection Draining):* No script de destruição automática, ao tentar excluir o cluster ECS imediatamente após o teste de 200 RPS, a AWS retornava o erro `ClusterContainsTasksException`. Compreendemos que o Load Balancer aguarda o processamento das últimas requisições na fila antes de encerrar as tarefas. A solução foi implementar um tempo de espera (`time.sleep`) adequado no script, permitindo o desligamento gracioso (*graceful shutdown*) das instâncias.
+2. *Alinhamento de Chaves no DynamoDB:* Houve um desacoplamento entre o design da aplicação (`courier_id` como Partition Key numérico) e o script de criação da tabela. A divergência causava falhas no SDK Boto3 ao injetar eventos em alta frequência. A infraestrutura foi refatorada para refletir exatamente os tipos (`N` e `S`) esperados pela API, além de aplicarmos o cast (`Decimal`) para compatibilizar os tipos `float` do Python com a exigência estrita do DynamoDB.
+
 = Modelo de Custos (Região us-east-1)
 
 A tabela abaixo projeta os custos mensais estimados (em USD) operando ininterruptamente, demonstrando a elasticidade de custos entre o dimensionamento para a operação base e o auto-scaling em picos estressantes.
@@ -114,3 +128,11 @@ A tabela abaixo projeta os custos mensais estimados (em USD) operando ininterrup
 ]
 
 *Nota de Resiliência:* O valor constante no RDS se deve ao provisionamento fixo com `MultiAZ=True`. A alta disponibilidade sacrifica a redução de custo base para garantir sobrevivência à queda de zonas, conforme o edital do projeto.
+
+= Conclusão e Trabalhos Futuros
+
+A separação clara entre a carga transacional e a carga de telemetria garantiu que a alta latência computacional do algoritmo de caminhos mínimos não comprometesse as atualizações em tempo real das posições dos entregadores. O sistema demonstrou robustez em cenários extremos, mantendo o percentil 95 abaixo do limite exigido, e provou ser tolerante a falhas.
+
+Como propostas para evoluções futuras da arquitetura, destacam-se:
+- *Integração com AWS Secrets Manager:* Eliminar a passagem de credenciais de banco de dados via variáveis de ambiente puras na Task Definition.
+- *Pipeline de CI/CD:* Substituir o build e push de contêineres realizados no script de deployment local por uma esteira automatizada de integração contínua (ex: GitHub Actions) baseada em testes E2E antes da liberação em produção.
