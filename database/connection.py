@@ -7,7 +7,10 @@ from pathlib import Path
 
 from database.dynamo_table import table_exists, create_table, TABLE_NAME
 from database.create_graph import load_graph_cache, download_graph, save_graph_cache
+from pathlib import Path
+from utils.aws_credentials import configure_local_aws_credentials
 
+configure_local_aws_credentials()
 load_dotenv()
 
 REGION = os.environ.get("AWS_REGION", "us-east-1")
