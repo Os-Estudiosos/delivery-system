@@ -131,6 +131,21 @@ def _is_courier_available(courier: Courier) -> bool:
     )
 
 
+def _courier_has_active_delivery(courier_id: int, session: Session, exclude_delivery_id: int | None = None) -> bool:
+    deliveries = session.query(Delivery).filter(Delivery.courier_id == courier_id).all()
+
+    for delivery in deliveries:
+        if exclude_delivery_id is not None and delivery.id == exclude_delivery_id:
+            continue
+
+        latest_status = _get_latest_delivery_status(delivery)
+        # Treat deliveries without events as active to avoid concurrent allocation.
+        if latest_status != OrderStatus.DELIVERED:
+            return True
+
+    return False
+
+
 def _assign_delivery_to_nearest_courier(delivery: Delivery, graph, session: Session) -> None:
     order = delivery.order
     couriers = session.query(Courier).all()
@@ -176,19 +191,22 @@ def create_delivery(delivery: DeliveryCreate, session: Session = Depends(get_ses
     db_order = _get_order_or_404(delivery.order_id, session)
     db_courier = _get_courier_or_404(delivery.courier_id, session)
 
+    if db_order.delivery:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail='Order already has an associated delivery.',
+        )
+
+    if _courier_has_active_delivery(delivery.courier_id, session):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail='Courier is currently busy with another delivery.',
+        )
+
     db_delivery = Delivery(
         order=db_order,
         courier=db_courier,
     )
-
-    # Verifica se o entregador já tem uma entrega em andamento
-    active_delivery = session.query(Delivery).join(Event).filter(
-        Delivery.courier_id == delivery.courier_id,
-        Event.status.notin_([OrderStatus.DELIVERED])
-    ).first()
-
-    if active_delivery:
-        raise HTTPException(status_code=400, detail="Courier is currently busy with another delivery.")
 
     session.add(db_delivery)
 
@@ -213,6 +231,11 @@ def update_delivery(delivery_id: int, delivery: DeliveryUpdate, session: Session
         db_delivery.order = _get_order_or_404(delivery.order_id, session)
 
     if delivery.courier_id is not None:
+        if _courier_has_active_delivery(delivery.courier_id, session, exclude_delivery_id=delivery_id):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail='Courier is currently busy with another delivery.',
+            )
         db_delivery.courier = _get_courier_or_404(delivery.courier_id, session)
 
     try:

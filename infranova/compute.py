@@ -8,6 +8,7 @@ ecr = boto3.client('ecr', region_name=region)
 ecs = boto3.client('ecs', region_name=region)
 elbv2 = boto3.client('elbv2', region_name=region)
 sts = boto3.client('sts')
+app_autoscaling = boto3.client('application-autoscaling', region_name=region)
 
 ACCOUNT_ID = sts.get_caller_identity()["Account"]
 REPO_NAME = f"{config.PROJECT}-repo"
@@ -22,6 +23,52 @@ def run_command(command: str):
         print(f"Erro no comando: {result.stderr}")
         raise Exception(f"Falha ao executar: {command}")
     return result.stdout.strip()
+
+
+def configure_ecs_service_autoscaling(cluster_name: str, service_name: str) -> None:
+    resource_id = f"service/{cluster_name}/{service_name}"
+
+    app_autoscaling.register_scalable_target(
+        ServiceNamespace='ecs',
+        ResourceId=resource_id,
+        ScalableDimension='ecs:service:DesiredCount',
+        MinCapacity=2,
+        MaxCapacity=10,
+    )
+
+    # Scale by average CPU utilization.
+    app_autoscaling.put_scaling_policy(
+        PolicyName=f"{service_name}-cpu-target-tracking",
+        ServiceNamespace='ecs',
+        ResourceId=resource_id,
+        ScalableDimension='ecs:service:DesiredCount',
+        PolicyType='TargetTrackingScaling',
+        TargetTrackingScalingPolicyConfiguration={
+            'TargetValue': 60.0,
+            'PredefinedMetricSpecification': {
+                'PredefinedMetricType': 'ECSServiceAverageCPUUtilization'
+            },
+            'ScaleInCooldown': 60,
+            'ScaleOutCooldown': 60,
+        },
+    )
+
+    # Scale by average memory utilization.
+    app_autoscaling.put_scaling_policy(
+        PolicyName=f"{service_name}-memory-target-tracking",
+        ServiceNamespace='ecs',
+        ResourceId=resource_id,
+        ScalableDimension='ecs:service:DesiredCount',
+        PolicyType='TargetTrackingScaling',
+        TargetTrackingScalingPolicyConfiguration={
+            'TargetValue': 70.0,
+            'PredefinedMetricSpecification': {
+                'PredefinedMetricType': 'ECSServiceAverageMemoryUtilization'
+            },
+            'ScaleInCooldown': 60,
+            'ScaleOutCooldown': 60,
+        },
+    )
 
 def setup_compute(network_ctx: dict, db_ctx: dict):
     print("\n--- 3. Configurando Compute (ECR, ALB e ECS) ---")
@@ -111,9 +158,11 @@ def setup_compute(network_ctx: dict, db_ctx: dict):
 
     # 5. Criando o Serviço ECS
     print("\nCriando Serviço ECS (Iniciando containers)...")
+    service_name = f"{config.PROJECT}-service"
+
     ecs.create_service(
         cluster=CLUSTER_NAME,
-        serviceName=f"{config.PROJECT}-service",
+        serviceName=service_name,
         taskDefinition=task_def_arn,
         desiredCount=2, # Começa com 2 instâncias para demonstrar disponibilidade
         launchType='FARGATE',
@@ -126,6 +175,9 @@ def setup_compute(network_ctx: dict, db_ctx: dict):
         },
         loadBalancers=[{'targetGroupArn': tg_arn, 'containerName': 'api-container', 'containerPort': config.APP_PORT}]
     )
+
+    print("Configurando Auto Scaling do ECS Service...")
+    configure_ecs_service_autoscaling(CLUSTER_NAME, service_name)
 
     print(f"\nDeploy do Compute finalizado!")
     print(f"DNS do Load Balancer (Acesse por aqui): http://{alb_dns}")
