@@ -136,7 +136,7 @@ async def simulate_order_lifecycle(session, seed_ids, debug=False):
         }
         order_status, order_data = await fetch(session, 'POST', f"{BASE_URL}/order/", order_payload)
         if order_status not in (200, 201) or not order_data:
-            if debug: print(f"  [ERRO] Falha ao criar order: {order_status}")
+            if debug: print(f"  [ERRO] Falha ao criar order: status={order_status}, response={order_data}")
             return False
 
         order_id = order_data.get("id")

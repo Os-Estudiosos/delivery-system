@@ -1,6 +1,7 @@
 import boto3
 import subprocess
 import base64
+import time
 from infranova import config
 
 region = config.REGION
@@ -18,11 +19,29 @@ LAB_ROLE_ARN = f"arn:aws:iam::{ACCOUNT_ID}:role/{config.LAB_ROLE_NAME}"
 def run_command(command: str):
     """Executa comandos no terminal (necessário para o Docker)."""
     print(f"Executando: {command}")
-    result = subprocess.run(command, shell=True, capture_output=True, text=True)
+    result = subprocess.run(command, shell=True, capture_output=True, text=False)
+    stdout = result.stdout.decode('utf-8', errors='replace') if result.stdout else ''
+    stderr = result.stderr.decode('utf-8', errors='replace') if result.stderr else ''
     if result.returncode != 0:
-        print(f"Erro no comando: {result.stderr}")
+        print(f"Erro no comando: {stderr}")
         raise Exception(f"Falha ao executar: {command}")
-    return result.stdout.strip()
+    return stdout.strip()
+
+
+def run_command_with_retry(command: str, attempts: int = 3, backoff_seconds: int = 5):
+    """Executa comando com retry para falhas transitórias de rede."""
+    last_error = None
+    for attempt in range(1, attempts + 1):
+        try:
+            return run_command(command)
+        except Exception as exc:
+            last_error = exc
+            if attempt == attempts:
+                break
+            print(f"Tentativa {attempt}/{attempts} falhou. Nova tentativa em {backoff_seconds}s...")
+            time.sleep(backoff_seconds)
+
+    raise last_error
 
 
 def configure_ecs_service_autoscaling(cluster_name: str, service_name: str) -> None:
@@ -96,7 +115,7 @@ def setup_compute(network_ctx: dict, db_ctx: dict):
     run_command(f"docker build -t {REPO_NAME} .")
     run_command(f"docker tag {REPO_NAME}:latest {repo_uri}:latest")
     print("Fazendo push para o ECR...")
-    run_command(f"docker push {repo_uri}:latest")
+    run_command_with_retry(f"docker push {repo_uri}:latest", attempts=3, backoff_seconds=8)
 
     # 3. Application Load Balancer (ALB)
     print("\nCriando Application Load Balancer...")
