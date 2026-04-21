@@ -3,18 +3,11 @@ import aiohttp
 import time
 import json
 import statistics
+import random
 from pathlib import Path
 
-# Configurações Base
-CTX_FILE = Path("deploy_context.json")
-try:
-    ctx = json.loads(CTX_FILE.read_text())
-    BASE_URL = f"http://{ctx['alb_dns']}"
-except Exception:
-    print("Erro: deploy_context.json não encontrado. Rode o deploy.py primeiro.")
-    exit(1)
-
 # Armazena as latências para calcular o P95 no final
+BASE_URL = ""
 latencies = []
 
 async def fetch(session, method, url, payload=None):
@@ -43,7 +36,7 @@ async def fetch(session, method, url, payload=None):
 
 async def seed_data(session):
     """Fase 1: Popula o RDS com dados iniciais antes do teste."""
-    print("🌱 Semeando dados iniciais...")
+    print("Semeando dados iniciais...")
     
     # 1. Cozinha e Restaurante
     await fetch(session, 'POST', f"{BASE_URL}/kitchen/", {"type": "Italiana"})
@@ -63,7 +56,7 @@ async def seed_data(session):
     await fetch(session, 'POST', f"{BASE_URL}/courier/", {
         "name": "Entregador Veloz", "vehicle": "MOTORCYCLE", "lat": -23.5500, "lon": -46.6330
     })
-    print("✅ Seed concluído.")
+    print("Seed concluído.")
 
 async def simulate_courier_movement(session, courier_id, delivery_id):
     """Simula o entregador enviando posição a cada 100ms para o DynamoDB."""
@@ -111,7 +104,7 @@ async def worker(name, session, queue):
 
 async def run_load_test(rps, duration):
     """Orquestra o ataque com a taxa de RPS desejada."""
-    print(f"\n🚀 Iniciando teste de carga: {rps} RPS por {duration} segundos...")
+    print(f"\nIniciando teste de carga: {rps} RPS por {duration} segundos...")
     latencies.clear()
     
     connector = aiohttp.TCPConnector(limit=0) # Remove limite de conexões
@@ -139,18 +132,20 @@ async def run_load_test(rps, duration):
         if latencies:
             p95 = statistics.quantiles(latencies, n=100)[94]
             avg = statistics.mean(latencies)
-            print(f"📊 Resultados para {rps} RPS:")
-            print(f"   Total de Requisições: {len(latencies)}")
-            print(f"   Latência Média: {avg:.2f} ms")
-            print(f"   Latência P95: {p95:.2f} ms")
+            print(f"Resultados para {rps} RPS:")
+            print(f"Total de Requisições: {len(latencies)}")
+            print(f"Latência Média: {avg:.2f} ms")
+            print(f"Latência P95: {p95:.2f} ms")
             
             if p95 < 500:
-                print("   ✅ SUCESSO: P95 abaixo de 500ms!")
+                print("SUCESSO: P95 abaixo de 500ms!")
             else:
-                print("   ⚠️ AVISO: P95 acima de 500ms. ECS pode estar precisando de mais containers.")
+                print("AVISO: P95 acima de 500ms. ECS pode estar precisando de mais containers.")
 
-import random
-async def main():
+async def main(url: str):
+    global BASE_URL
+    BASE_URL = url
+    
     print("--- DijkFood Load Simulator ---")
     # Cenário 1: Operação Normal
     await run_load_test(rps=10, duration=10)
@@ -159,10 +154,11 @@ async def main():
     await run_load_test(rps=50, duration=10)
     
     # Cenário 3: Evento Especial (Requisito Máximo)
-    # Aguarda um pouco para o ECS escalar se necessário
     print("\nAguardando 5s antes do teste de estresse máximo...")
     time.sleep(5)
     await run_load_test(rps=200, duration=10)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Fallback se rodar o simulador solto
+    ctx = json.loads(Path("deploy_context.json").read_text())
+    asyncio.run(main(f"http://{ctx['alb_dns']}"))

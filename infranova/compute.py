@@ -127,8 +127,8 @@ def setup_compute(network_ctx: dict, db_ctx: dict):
         loadBalancers=[{'targetGroupArn': tg_arn, 'containerName': 'api-container', 'containerPort': config.APP_PORT}]
     )
 
-    print(f"\n✅ Deploy do Compute finalizado!")
-    print(f"🔗 DNS do Load Balancer (Acesse por aqui): http://{alb_dns}")
+    print(f"\nDeploy do Compute finalizado!")
+    print(f"DNS do Load Balancer (Acesse por aqui): http://{alb_dns}")
     
     results['alb_dns'] = alb_dns
     return results

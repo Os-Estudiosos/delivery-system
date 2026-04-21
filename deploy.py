@@ -3,7 +3,6 @@ import asyncio
 import simulator
 import destroy
 import json
-import sys
 from pathlib import Path
 
 # Importando os módulos da nossa infraestrutura
@@ -35,7 +34,8 @@ def deploy():
         
         # 4. Executa o Simulador de Carga
         print("INICIANDO EXPERIMENTO DE CARGA AUTOMÁTICO")
-        asyncio.run(simulator.main())
+        api_url = f"http://{ctx['alb_dns']}"
+        asyncio.run(simulator.main(api_url))
         
         return ctx
         
@@ -46,9 +46,7 @@ def deploy():
         
     finally:
         # 5. Destruição Obrigatória (Independente de sucesso ou erro)
-        print("\n==================================================")
-        print("🧹 INICIANDO DESTRUIÇÃO DOS RECURSOS")
-        print("==================================================")
+        print("INICIANDO DESTRUIÇÃO DOS RECURSOS")
         destroy.destroy_all()
 
 if __name__ == "__main__":
