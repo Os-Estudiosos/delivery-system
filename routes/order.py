@@ -63,7 +63,7 @@ class OrderResponse(BaseModel):
     created_at: datetime
     items: list[OrderItemResponse]
     courier: CourierReference | None
-    status: OrderStatus | None
+    status: OrderStatus | OrderStatus.PREPARING
 
 
 class OrderEventResponse(BaseModel):

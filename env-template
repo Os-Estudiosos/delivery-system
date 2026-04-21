@@ -1,11 +1,20 @@
+DB_USER=
+DB_PASSWORD=
+DB_HOST=postgres
+DB_PORT=5432
+DB_NAME=dijkfood
+
 PROJECT_ENV=development
+
 AWS_REGION=us-east-1
 
 # DynamoDB endpoint used only when PROJECT_ENV=development.
 # Use http://localhost:8001 when running API locally.
 # Use http://dynamodb:8000 when running API inside docker-compose.
-DYNAMODB_ENDPOINT=http://localhost:8001
+DYNAMODB_ENDPOINT=
 
 # Dummy credentials work for local DynamoDB. Real values are required for AWS environments.
-AWS_ACCESS_KEY_ID=local
-AWS_SECRET_ACCESS_KEY=local
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+AWS_SESSION_TOKEN=
+# Locally, this token is not necessary
