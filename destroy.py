@@ -28,7 +28,7 @@ def destroy_all():
     print("1. Apagando ECS Service...")
     try:
         ecs.update_service(cluster=f"{config.PROJECT}-cluster", service=f"{config.PROJECT}-service", desiredCount=0)
-        time.sleep(10) # Espera os containers morrerem
+        time.sleep(60) # Espera os containers morrerem
         ecs.delete_service(cluster=f"{config.PROJECT}-cluster", service=f"{config.PROJECT}-service", force=True)
         ecs.delete_cluster(cluster=f"{config.PROJECT}-cluster")
     except Exception as e: print(f"Aviso ECS: {e}")

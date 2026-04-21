@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-
+import osmnx as ox
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
@@ -131,11 +131,12 @@ def _is_courier_available(courier: Courier) -> bool:
     )
 
 
-def _assign_delivery_to_nearest_courier(delivery: Delivery, graph) -> None:
+def _assign_delivery_to_nearest_courier(delivery: Delivery, graph, session: Session) -> None:
     order = delivery.order
-    couriers = delivery.courier.session.query(Courier).all()
+    couriers = session.query(Courier).all()
 
-    restaurant_node = graph.get_closest_node(order.restaurant.lat, order.restaurant.lon)
+    # nearest_nodes(G, X(lon), Y(lat))
+    restaurant_node = ox.distance.nearest_nodes(graph, order.restaurant.lon, order.restaurant.lat)
     dists = dijkstra(graph, restaurant_node)
 
     best_courier = None
@@ -145,7 +146,8 @@ def _assign_delivery_to_nearest_courier(delivery: Delivery, graph) -> None:
         if not _is_courier_available(courier):
             continue
 
-        courier_node = graph.get_closest_node(courier.lat, courier.lon)
+        # OSMnx para o entregador
+        courier_node = ox.distance.nearest_nodes(graph, courier.lon, courier.lat)
         dist = dists.get(courier_node, float("inf"))
 
         if dist < best_dist:
@@ -154,7 +156,7 @@ def _assign_delivery_to_nearest_courier(delivery: Delivery, graph) -> None:
 
     if best_courier:
         delivery.courier = best_courier
-        delivery.status = OrderStatus.PICKED_UP
+        print(f"Entregador {best_courier.name} escolhido a uma distância de {best_dist}")
 
 
 @router.get('/', tags=['get deliveries'], response_model=list[DeliveryResponse])
@@ -245,7 +247,7 @@ def update_delivery_status(delivery_id: int, payload: DeliveryStatusCreate, sess
         )
 
     if payload.status == OrderStatus.READY_FOR_PICKUP:
-        _assign_delivery_to_nearest_courier(db_delivery, graph)
+        _assign_delivery_to_nearest_courier(db_delivery, graph, session)
 
     db_event = Event(
         status=payload.status,

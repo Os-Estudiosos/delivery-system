@@ -38,12 +38,25 @@ def setup_databases(network_context: dict):
         table = dynamodb.create_table(
             TableName=DYNAMO_TABLE,
             KeySchema=[
-                {'AttributeName': 'order_id', 'KeyType': 'HASH'},
+                {'AttributeName': 'courier_id', 'KeyType': 'HASH'},
                 {'AttributeName': 'timestamp', 'KeyType': 'RANGE'}
             ],
             AttributeDefinitions=[
-                {'AttributeName': 'order_id', 'AttributeType': 'S'},
-                {'AttributeName': 'timestamp', 'AttributeType': 'N'}
+                {'AttributeName': 'courier_id', 'AttributeType': 'N'},
+                {'AttributeName': 'timestamp', 'AttributeType': 'S'},
+                {'AttributeName': 'delivery_id', 'AttributeType': 'S'}
+            ],
+            GlobalSecondaryIndexes=[
+                {
+                    "IndexName": "gsi-delivery",
+                    "KeySchema": [
+                        {"AttributeName": "delivery_id", "KeyType": "HASH"},
+                        {"AttributeName": "timestamp", "KeyType": "RANGE"},
+                    ],
+                    "Projection": {"ProjectionType": "ALL"},
+                    # Provisionamento do Índice
+                    "ProvisionedThroughput": {'ReadCapacityUnits': 50, 'WriteCapacityUnits': 50}
+                }
             ],
             ProvisionedThroughput={'ReadCapacityUnits': 50, 'WriteCapacityUnits': 200}
         )
