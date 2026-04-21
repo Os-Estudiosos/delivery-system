@@ -9,6 +9,7 @@ from pathlib import Path
 # Armazena as latências para calcular o P95 no final
 BASE_URL = ""
 latencies = []
+STATUS_FLOW = ["CONFIRMED", "PREPARING", "READY_FOR_PICKUP", "PICKED_UP", "IN_TRANSIT", "DELIVERED"]
 
 async def fetch(session, method, url, payload=None):
     """Executa a requisição HTTP e mede a latência exata."""
@@ -91,8 +92,46 @@ async def simulate_courier_movement(session, courier_id, delivery_id):
         await fetch(session, 'PUT', f"{BASE_URL}/courier/{courier_id}/position", payload)
         await asyncio.sleep(0.1) # Requisito: 100ms
 
+
+async def _find_delivery_by_order_id(session, order_id: int):
+    status_code, deliveries = await fetch(session, 'GET', f"{BASE_URL}/delivery/")
+    if status_code not in (200, 201) or not isinstance(deliveries, list):
+        return None
+
+    for delivery in deliveries:
+        order_ref = delivery.get("order", {})
+        if order_ref.get("id") == order_id:
+            return delivery
+
+    return None
+
+
+def _remaining_statuses(current_status: str | None) -> list[str]:
+    if current_status is None:
+        return STATUS_FLOW
+
+    if current_status not in STATUS_FLOW:
+        return []
+
+    index = STATUS_FLOW.index(current_status)
+    return STATUS_FLOW[index + 1:]
+
 async def simulate_order_lifecycle(session, seed_ids):
     """Fase 2: Simula o ciclo de vida completo de um pedido no RDS."""
+    courier_payload = {
+        "name": f"Entregador-{time.perf_counter_ns()}",
+        "vehicle": "MOTORCYCLE",
+        "lat": -23.5500 + random.uniform(-0.002, 0.002),
+        "lon": -46.6330 + random.uniform(-0.002, 0.002),
+    }
+    courier_status, courier_data = await fetch(session, 'POST', f"{BASE_URL}/courier/", courier_payload)
+    if courier_status not in (200, 201) or not courier_data:
+        return False
+
+    fallback_courier_id = courier_data.get("id")
+    if fallback_courier_id is None:
+        return False
+
     # 1. Cria Pedido
     order_payload = {
         "restaurant_id": seed_ids["restaurant_id"],
@@ -107,36 +146,49 @@ async def simulate_order_lifecycle(session, seed_ids):
     if order_id is None:
         return False
 
-    courier_payload = {
-        "name": f"Entregador-{time.perf_counter_ns()}",
-        "vehicle": "MOTORCYCLE",
-        "lat": -23.5500 + random.uniform(-0.002, 0.002),
-        "lon": -46.6330 + random.uniform(-0.002, 0.002),
-    }
-    courier_status, courier_data = await fetch(session, 'POST', f"{BASE_URL}/courier/", courier_payload)
-    if courier_status not in (200, 201) or not courier_data:
+    # Busca estado atual do pedido para continuar do ponto correto.
+    order_get_status, current_order = await fetch(session, 'GET', f"{BASE_URL}/order/{order_id}")
+    if order_get_status not in (200, 201) or not current_order:
         return False
 
-    courier_id = courier_data.get("id")
-    if courier_id is None:
-        return False
-    
-    # 2. Cria Delivery
-    delivery_status, delivery_data = await fetch(session, 'POST', f"{BASE_URL}/delivery/", {"order_id": order_id, "courier_id": courier_id})
-    if delivery_status not in (200, 201) or not delivery_data:
+    current_status = current_order.get("status")
+    selected_courier = current_order.get("courier") or {}
+    selected_courier_id = selected_courier.get("id")
+
+    # 2. Cria Delivery quando ainda não existe; se já existir, reaproveita.
+    delivery_status, delivery_data = await fetch(
+        session,
+        'POST',
+        f"{BASE_URL}/delivery/",
+        {"order_id": order_id, "courier_id": fallback_courier_id},
+    )
+
+    if delivery_status in (200, 201) and delivery_data:
+        delivery_id = delivery_data.get("id")
+        delivery_courier = delivery_data.get("courier") or {}
+        selected_courier_id = delivery_courier.get("id", fallback_courier_id)
+        current_status = None
+    elif delivery_status == 409:
+        existing_delivery = await _find_delivery_by_order_id(session, order_id)
+        if not existing_delivery:
+            return False
+
+        delivery_id = existing_delivery.get("id")
+        delivery_courier = existing_delivery.get("courier") or {}
+        if delivery_courier.get("id") is not None:
+            selected_courier_id = delivery_courier.get("id")
+    else:
         return False
 
-    delivery_id = delivery_data.get("id")
-    if delivery_id is None:
+    if delivery_id is None or selected_courier_id is None:
         return False
 
     # 3. Dispara o movimento do entregador no DynamoDB em background (não bloqueia o RDS)
-    asyncio.create_task(simulate_courier_movement(session, courier_id, delivery_id))
+    asyncio.create_task(simulate_courier_movement(session, selected_courier_id, delivery_id))
 
     # 4. Avança status no RDS
-    statuses = ["CONFIRMED", "PREPARING", "READY_FOR_PICKUP", "PICKED_UP", "IN_TRANSIT", "DELIVERED"]
-    for delivery_status in statuses:
-        status_code, _ = await fetch(session, 'PATCH', f"{BASE_URL}/delivery/{delivery_id}/status", {"status": delivery_status})
+    for next_status in _remaining_statuses(current_status):
+        status_code, _ = await fetch(session, 'PATCH', f"{BASE_URL}/delivery/{delivery_id}/status", {"status": next_status})
         if status_code not in (200, 201):
             return False
         await asyncio.sleep(0.5) # Simula o tempo real passando
