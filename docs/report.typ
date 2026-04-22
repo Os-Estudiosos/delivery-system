@@ -37,10 +37,17 @@
 
 = Introdução
 
-O presente relatório detalha a arquitetura, as decisões de projeto e os resultados de implantação da plataforma DijkFood. O sistema foi desenvolvido para gerenciar o ciclo de vida de pedidos de delivery, calculando rotas no grafo viário de São Paulo através da biblioteca `osmnx` e hospedado de forma totalmente automatizada na nuvem AWS.
+O presente relatório detalha a arquitetura, as decisões de projeto e os resultados de implantação da plataforma DijkFood. O sistema foi desenvolvido para gerenciar o ciclo de vida de pedidos de delivery, calculando rotas no grafo viário de São Paulo através da biblioteca `osmnx` e hospedado de forma totalmente automatizada na nuvem AWS. O projeto foi implementado utilizando uma arquitetura de microsserviços, com foco em escalabilidade, resiliência e observabilidade, atendendo aos requisitos funcionais e não-funcionais estabelecidos.
 
-=== fazer diagrama
+= Arquitetura
 
+Em resumo, a arquitetura é composta por um Application Load Balancer (ALB) que distribui as requisições dos usuários para um cluster Amazon ECS (que contém os conteiners dos serviços) operando no modo Fargate, juntamente com Auto Scaling para gerenciar a capacidade de execução. A persistência de dados é realizada por um banco relacional Amazon RDS (PostgreSQL) para as operações transacionais, enquanto a telemetria de entregadores é armazenada em uma tabela NoSQL do Amazon DynamoDB. O grafo de São Paulo é pré-processado e armazenado no Amazon S3, permitindo inicialização rápida das instâncias ECS. Por fim, os logs e métricas são coletados utilizando o Amazon CloudWatch, garantindo monitoramento e observabilidade contínuos do serviço.
+
+Tal arquitetura foi projetada para atender a requisitos funcionais rigorosos, como latência máxima de 500ms no percentil 95 (P95) sob carga de até 200 pedidos por segundo, e requisitos não-funcionais relacionados à escalabilidade, resiliência e segurança. Abaixo se encontra um diagrama de alto nível da arquitetura utilizada:
+
+#align(center)[
+  #image("Diagrama Dijksfood.png", height: 47%)
+]
 = Fluxo de Dados
 
 A arquitetura foi projetada para garantir separação de responsabilidades, alta disponibilidade e resiliência a picos de tráfego:
@@ -85,6 +92,8 @@ A API REST implementada atende estritamente às regras de negócio mapeadas:
 
 = Resultados Experimentais de Carga
 
+== atualizar a tabela
+
 Os testes foram executados utilizando um simulador assíncrono desenvolvido com a biblioteca `aiohttp`, orquestrando requisições simultâneas para validação do limite de 500ms no percentil 95 (P95). O *seed* do banco de dados e a geração de tráfego foram executados logo após o provisionamento sem intervenção manual.
 
 #align(center)[
@@ -118,12 +127,12 @@ A tabela abaixo projeta os custos mensais estimados (em USD) operando ininterrup
     inset: 10pt,
     align: center,
     [*Recurso AWS*], [*Operação Normal (Mensal)*], [*Evento Especial (Mensal)*],
-    [ALB (Application Load Balancer)], [\$ 22.50], [\$ 25.00],
-    [ECS Fargate (0.5 vCPU, 1GB)], [\$ 16.50 (2 Tasks)], [\$ 82.50 (10 Tasks)],
-    [RDS PostgreSQL (db.t3.micro Multi-AZ)], [\$ 36.00], [\$ 36.00],
-    [DynamoDB (Prov. 50 RCU, 200 WCU)], [\$ 28.00], [\$ 115.00 (Escalado)],
-    [Amazon S3 (Armazenamento / Transf.)], [\$ 0.10], [\$ 0.30],
-    [*Custo Total Estimado*], [*\$ 103.10*], [*\$ 258.80*],
+    [*Application Load Balancer* (1 segundo por conexão e e regra por solicitação)], [\$ *28.11* (1 TB/mês, 50 novas conexões e 50 solicitações por segundo)], [\$ *221.23* (25 TB/mês, 200 novas conexões e 200 solicitações por segundo)],
+    [*ECS Fargate* (0.5 vCPU, 1GB)], [\$ *36.04* (2 Tasks)], [\$ *144.16* (8 Tasks)],
+    [*RDS PostgreSQL* (db.t3.micro Multi-AZ, on-demand, com Proxy e com 20GB de armazenamento e de backup)], [\$ *54.68*], [\$ *54.68*],
+    [*DynamoDB* (Standard com 200 bytes por item)], [\$ *90.59* (1GB de armazenamento e 50 gravações e 50 leituras por segundo)], [\$ *337.59* (3,5GB de armazenamento e 200 gravações e 200 leituras por segundo)],
+    [*Amazon S3* (Standard e com 20GB de armazenamento)], [\$ *0.23*], [\$ *0.23*],
+    [*Custo Total Estimado*], [*\$ 209.65*], [*\$ 757.89*],
   )
 ]
 
