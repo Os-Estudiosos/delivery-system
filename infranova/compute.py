@@ -153,7 +153,7 @@ def setup_compute(network_ctx: dict, db_ctx: dict):
         family=f"{config.PROJECT}-task",
         networkMode='awsvpc',
         requiresCompatibilities=['FARGATE'],
-        cpu='512', memory='1024',
+        cpu='2048', memory='4096',
         executionRoleArn=LAB_ROLE_ARN, # Obrigatório: LabRole
         taskRoleArn=LAB_ROLE_ARN,      # Obrigatório: LabRole
         containerDefinitions=[{
