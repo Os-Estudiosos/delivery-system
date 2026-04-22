@@ -34,6 +34,7 @@ dependencies = [
     "typing-extensions==4.15.0",
     "urllib3==2.6.3",
     "scikit-learn>=1.8.0",
+    "awscli>=1.44.72",
 ]
 [tool.pytest.ini_options]
 pythonpath = ["."]
