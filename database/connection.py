@@ -29,7 +29,7 @@ _DB_NAME = os.environ.get('DB_NAME', 'dijkfood')
 
 _DB_URL = f"postgresql+psycopg2://{_DB_USER}:{_DB_PASSWORD}@{_DB_HOST}:{_DB_PORT}/{_DB_NAME}"
 
-engine = create_engine(_DB_URL, echo=False)
+engine = create_engine(_DB_URL, echo=False, pool_size=100, max_overflow=200)
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
 def get_session():

@@ -39,7 +39,9 @@ async def fetch(session, method, url, payload=None):
                 except json.JSONDecodeError:
                     data = None
     except Exception as e:
-        status = 500
+        # AQUI ESTÁ A CORREÇÃO: Printa o erro real do aiohttp e retorna status 0 para não confundir com erro da API
+        print(f"\n[ERRO DE CONEXÃO REAL] Falha ao tentar {method} em {url} -> {str(e)}")
+        status = 0 
         data = None
 
     end_time = time.perf_counter()
@@ -296,12 +298,12 @@ async def main(url: str):
     await run_load_test(rps=10, duration=10, seed_ids=seed_ids, debug_first=True)
     
     # Cenário 2: Pico (Almoço/Jantar)
-    await run_load_test(rps=50, duration=10, seed_ids=seed_ids, debug_first=False)
+    await run_load_test(rps=50, duration=60, seed_ids=seed_ids, debug_first=False)
     
     # Cenário 3: Evento Especial (Requisito Máximo)
     print("\nAguardando 5s antes do teste de estresse máximo...")
     await asyncio.sleep(5)
-    await run_load_test(rps=200, duration=10, seed_ids=seed_ids, debug_first=False)
+    await run_load_test(rps=200, duration=180, seed_ids=seed_ids, debug_first=False)
 
 if __name__ == "__main__":
     # Fallback se rodar o simulador solto

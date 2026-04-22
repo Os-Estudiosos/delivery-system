@@ -22,7 +22,7 @@ def save_graph_cache(graph, graph_path: Path):
 def download_graph(place: str, network_type: str):
 
     print(f"[download] Fetching '{network_type}' network for '{place}' …")
-    graph = ox.graph_from_place(place, network_type=network_type)
+    graph = ox.graph_from_place("Sé, São Paulo, Brazil", network_type=network_type)
     print(f"[download] Done")
 
     return graph

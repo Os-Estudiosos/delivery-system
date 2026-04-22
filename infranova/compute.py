@@ -132,7 +132,11 @@ def setup_compute(network_ctx: dict, db_ctx: dict):
     tg_resp = elbv2.create_target_group(
         Name=f"{config.PROJECT}-tg",
         Protocol='HTTP', Port=config.APP_PORT, VpcId=network_ctx['vpc_id'],
-        TargetType='ip', HealthCheckPath='/health' # A API DEVE ter uma rota /health
+        TargetType='ip', HealthCheckPath='/health', # A API DEVE ter uma rota /health
+        HealthCheckIntervalSeconds=60,   # Espera 1 minuto entre checagens
+        HealthCheckTimeoutSeconds=30,    # Dá 30 segundos pro contêiner responder
+        HealthyThresholdCount=2,
+        UnhealthyThresholdCount=10,     # Permite até 10 falhas antes de marcar como unhealthy (para evitar flapping)
     )
     tg_arn = tg_resp['TargetGroups'][0]['TargetGroupArn']
     
