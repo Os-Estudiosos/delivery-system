@@ -110,5 +110,9 @@ docker compose up -d
 ## Executando o projeto
 Após todos os passos anteriores, rode o seguinte comando para realizar o deploy do projeto:
 ```bash
+uv run deploy.py
+```
+ou
+```bash
 python deploy.py
 ```
