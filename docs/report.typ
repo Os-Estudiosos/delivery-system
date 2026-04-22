@@ -46,8 +46,9 @@ Em resumo, a arquitetura é composta por um Application Load Balancer (ALB) que 
 Tal arquitetura foi projetada para atender a requisitos funcionais rigorosos, como latência máxima de 500ms no percentil 95 (P95) sob carga de até 200 pedidos por segundo, e requisitos não-funcionais relacionados à escalabilidade, resiliência e segurança. Abaixo se encontra um diagrama de alto nível da arquitetura utilizada:
 
 #align(center)[
-  #image("Diagrama Dijksfood.png", height: 47%)
+  #image("diagrams/Diagrama Dijksfood.png", height: 47%)
 ]
+
 = Fluxo de Dados
 
 A arquitetura foi projetada para garantir separação de responsabilidades, alta disponibilidade e resiliência a picos de tráfego:
@@ -110,6 +111,22 @@ Os testes foram executados utilizando um simulador assíncrono desenvolvido com 
 
 Os resultados demonstram eficiência no isolamento das cargas. O estrangulamento da computação causado pelo Dijkstra não propagou latência para o cadastro e a gravação atômica da entrega, atendendo os requisitos não-funcionais com margem segura sob condições de estresse elevado.
 
+Segue algumas imagens demonstrando o comportamento do sistema durante os testes com 10, 50 e 200 pedidos por segundo respectivamente:
+
+#align(center)[
+  #image("images/Resultados 10ps.jpeg")
+]
+
+#align(center)[
+  #image("images/Resultados 50ps.jpeg")
+]
+
+#align(center)[
+  #image("images/Resultados 200ps.jpeg")
+]
+
+
+
 = Desafios Encontrados e Soluções
 
 Durante a fase de implantação e testes de estresse, dois desafios arquiteturais se destacaram, exigindo adaptações na infraestrutura como código (IaC):
@@ -128,11 +145,11 @@ A tabela abaixo projeta os custos mensais estimados (em USD) operando ininterrup
     align: center,
     [*Recurso AWS*], [*Operação Normal (Mensal)*], [*Evento Especial (Mensal)*],
     [*Application Load Balancer* (1 segundo por conexão e e regra por solicitação)], [\$ *28.11* (1 TB/mês, 50 novas conexões e 50 solicitações por segundo)], [\$ *221.23* (25 TB/mês, 200 novas conexões e 200 solicitações por segundo)],
-    [*ECS Fargate* (0.5 vCPU, 1GB)], [\$ *36.04* (2 Tasks)], [\$ *144.16* (8 Tasks)],
+    [*ECS Fargate* (2 vCPU, 4GB)], [\$ *144.16* (2 Tasks)], [\$ *576.65* (8 Tasks)],
     [*RDS PostgreSQL* (db.t3.micro Multi-AZ, on-demand, com Proxy e com 20GB de armazenamento e de backup)], [\$ *54.68*], [\$ *54.68*],
     [*DynamoDB* (Standard com 200 bytes por item)], [\$ *90.59* (1GB de armazenamento e 50 gravações e 50 leituras por segundo)], [\$ *337.59* (3,5GB de armazenamento e 200 gravações e 200 leituras por segundo)],
     [*Amazon S3* (Standard e com 20GB de armazenamento)], [\$ *0.23*], [\$ *0.23*],
-    [*Custo Total Estimado*], [*\$ 209.65*], [*\$ 757.89*],
+    [*Custo Total Estimado*], [*\$ 317.77*], [*\$ 1190.38*],
   )
 ]
 
