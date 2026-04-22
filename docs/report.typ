@@ -76,7 +76,7 @@ A arquitetura foi projetada para garantir separação de responsabilidades, alta
 == Gestão de Inicialização e Cálculos de Rota
 - *Requisito:* O algoritmo deve calcular as rotas utilizando caminhos mínimos sobre a rede real sem travar a API.
 - *Alternativa Considerada:* O contêiner realizar o download em tempo real via API externa do OpenStreetMap.
-- *Opção Escolhida:* Cache do grafo de São Paulo no Amazon S3 e implementação nativa do Algoritmo de Dijkstra.
+- *Opção Escolhida:* Cache do grafo de um múnicipio de São Paulo (facilitando o cache) no Amazon S3 e implementação nativa do Algoritmo de Dijkstra.
 - *Justificativa:* O download via OSMnx pode levar minutos, o que faria o Load Balancer identificar a nova instância ECS como defeituosa e encerrá-la. Ao criar um cache de backup no S3, o contêiner inicializa o grafo em disco em poucos segundos, permitindo que a API atenda os pedidos atômicos sem impacto de latência.
 
 == Segurança e Isolamento de Rede (Security Groups)
@@ -93,39 +93,19 @@ A API REST implementada atende estritamente às regras de negócio mapeadas:
 
 = Resultados Experimentais de Carga
 
-== atualizar a tabela
-
 Os testes foram executados utilizando um simulador assíncrono desenvolvido com a biblioteca `aiohttp`, orquestrando requisições simultâneas para validação do limite de 500ms no percentil 95 (P95). O *seed* do banco de dados e a geração de tráfego foram executados logo após o provisionamento sem intervenção manual.
 
-#align(center)[
-  #table(
-    columns: (auto, auto, auto, auto),
-    inset: 10pt,
-    align: center,
-    [*Cenário*], [*Taxa Demandada*], [*Latência Média*], [*Latência P95*],
-    [Operação normal], [10 Pedidos/s], [141.64 ms], [152.17 ms],
-    [Pico (Almoço/Jantar)], [50 Pedidos/s], [138.63 ms], [139.31 ms],
-    [Evento Especial], [200 Pedidos/s], [193.54 ms], [198.24 ms],
-  )
-]
-
-Os resultados demonstram eficiência no isolamento das cargas. O estrangulamento da computação causado pelo Dijkstra não propagou latência para o cadastro e a gravação atômica da entrega, atendendo os requisitos não-funcionais com margem segura sob condições de estresse elevado.
-
-Segue algumas imagens demonstrando o comportamento do sistema durante os testes com 10, 50 e 200 pedidos por segundo respectivamente:
+Segue uma imagem de uma das tentativas (essa, bem sucedida) demonstrando o comportamento do sistema durante os testes com 10 pedidos por segundo respectivamente:
 
 #align(center)[
   #image("images/Resultados 10ps.jpeg")
 ]
 
+
+Abaixo, outro print do funcionamento de parte do simulador de carga: Disparo de um alarme em um serviço do ECS, durante teste de carga, alcançando uso de memória acima de 60%.
 #align(center)[
-  #image("images/Resultados 50ps.jpeg")
+  #image("images/resultadoalarme.jpeg")
 ]
-
-#align(center)[
-  #image("images/Resultados 200ps.jpeg")
-]
-
-
 
 = Desafios Encontrados e Soluções
 
@@ -155,10 +135,13 @@ A tabela abaixo projeta os custos mensais estimados (em USD) operando ininterrup
 
 *Nota de Resiliência:* O valor constante no RDS se deve ao provisionamento fixo com `MultiAZ=True`. A alta disponibilidade sacrifica a redução de custo base para garantir sobrevivência à queda de zonas, conforme o edital do projeto.
 
-= Conclusão e Trabalhos Futuros
 
-A separação clara entre a carga transacional e a carga de telemetria garantiu que a alta latência computacional do algoritmo de caminhos mínimos não comprometesse as atualizações em tempo real das posições dos entregadores. O sistema demonstrou robustez em cenários extremos, mantendo o percentil 95 abaixo do limite exigido, e provou ser tolerante a falhas.
+= Considerações Finais
 
-Como propostas para evoluções futuras da arquitetura, destacam-se:
-- *Integração com AWS Secrets Manager:* Eliminar a passagem de credenciais de banco de dados via variáveis de ambiente puras na Task Definition.
-- *Pipeline de CI/CD:* Substituir o build e push de contêineres realizados no script de deployment local por uma esteira automatizada de integração contínua (ex: GitHub Actions) baseada em testes E2E antes da liberação em produção.
+Ao longo do desenvolvimento e da validação deste projeto, foram realizadas diversas iterações para testar a elasticidade da arquitetura sob estresse. Avaliamos diferentes parâmetros processamento vertical para as tasks do ECS (variando de 256 de CPU / 512MB de memória até 1024 de CPU / 2048MB de memória) e alteramos também a tolerância do Target Group no Application Load Balancer. Ajustamos os parâmetros de Health Check (IntervalSeconds, TimeoutSeconds, Healthy e UnhealthyThresholdCount) para evitar o corte cedo demais de conexões durante o processamento do Algoritmo de Dijkstra. Por fim, prolongamos a duração das requisições no simulador de carga para tentar forçar a resposta da infraestrutura.
+
+Apesar de todas as adequações estruturais, o Auto Scaling não chegou a ejetar corretamente novas instâncias durante os testes. Achamos que esse comportamento não vem de um erro de configuração, mas sim da mecânica intrínseca de monitoramento da nuvem. O escalonamento horizontal é mediado pelo Amazon CloudWatch, que coleta e agrega métricas de CPU em tempo discreto (geralmente de 1 minuto). Para evitar o provisionamento desnecessário gerado por ruídos de rede, as políticas de Target Tracking exigem que o limite de estresse seja ultrapassado de forma sustentada por vários ciclos de agregação (tipicamente 3 minutos contínuos) antes de disparar o alarme.
+
+Portanto, testes de estresse rápidos, como os que fizemos — concentrados em segundos ou poucos minutos — são interpretados pela AWS como anomalias efêmeras, não satisfazendo o tempo de maturação do alarme. Fica a lição arquitetural de que o Auto Scaling é uma ferramenta desenhada para o crescimento orgânico e gradual de tráfego (ao longo de horas ou dias de operação). Por interpretação errada do que fazer, acabou não funcionando como esperado. 
+
+Para cenários que exigem absorção de picos instantâneos e massivos de requisições, a melhor prática não é o escalonamento reativo, mas sim a adoção de estratégias preventivas de Pre-warming, provisionando antecipadamente as tasks necessárias para suportar a carga inicial sem degradação do serviço.
