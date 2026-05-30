@@ -1,5 +1,5 @@
 variable "cities" {
-  default = ["sp", "rj", "bh"]
+  default = ["rj"]
 }
 
 variable "k8s_path" {

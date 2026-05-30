@@ -13,7 +13,7 @@ resource "docker_network" "dijkfood" {
 
 # LocalStack
 resource "docker_image" "localstack" {
-  name = "localstack/localstack:latest"
+  name = "localstack/localstack:3.8"
 }
 
 resource "docker_container" "localstack" {
@@ -24,6 +24,7 @@ resource "docker_container" "localstack" {
     "SERVICES=sqs,dynamodb,s3",
     "DEFAULT_REGION=us-east-1",
     "EAGER_SERVICE_LOADING=1",
+    "ACTIVATE_PRO=0"
   ]
 
   ports {
@@ -119,42 +120,16 @@ locals {
 
 resource "docker_image" "services" {
   for_each = local.services
-  name     = "dijkfood-${each.key}:local"
+  name     = "delivery-system/${each.key}:latest"
 
   build {
     context = each.value.context
   }
 }
 
-resource "docker_container" "services" {
-  for_each = local.services
-  name     = each.key
-  image    = docker_image.services[each.key].image_id
-
-  env = [
-    "PORT=${each.value.port}",
-    "DB_HOST=postgres",
-    "DB_PORT=5432",
-    "DB_USER=postgres",
-    "DB_PASSWORD=postgres",
-    "DB_NAME=dijkfood",
-  ]
-
-  ports {
-    internal = each.value.port
-    external = each.value.port
-  }
-
-  networks_advanced {
-    name = docker_network.dijkfood.name
-  }
-
-  depends_on = [docker_container.postgres]
-}
-
 # Positions consumer
 resource "docker_image" "positions" {
-  name = "dijkfood-positions:local"
+  name = "delivery-system/positions:latest"
   build {
     context = "../../positions"
   }
