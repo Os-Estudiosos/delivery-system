@@ -4,6 +4,11 @@ terraform {
       source  = "gavinbunney/kubectl"
       version = "~> 1.14"
     }
+
+    docker = {
+      source  = "kreuzwerker/docker"
+      version = "~> 3.0"
+    }
   }
 }
 
@@ -19,13 +24,37 @@ locals {
   }
 }
 
+# Serviços da aplicação
+locals {
+  services = {
+    admin       = { port = 4000, context = "../../../admin" }
+    clients     = { port = 4001, context = "../../../clients" }
+    couriers    = { port = 4002, context = "../../../couriers" }
+    matching    = { port = 4003, context = "../../../matching" }
+    orders      = { port = 4004, context = "../../../orders" }
+    restaurants = { port = 4005, context = "../../../restaurants" }
+  }
+}
+
+resource "docker_image" "services" {
+  for_each = local.services
+  name     = "delivery-system/${each.key}:latest"
+
+  build {
+    context = each.value.context
+  }
+}
+
 resource "kubectl_manifest" "admin_namespace" {
   yaml_body = file("${var.k8s_path}/admin/namespace.yaml")
 }
 
 resource "kubectl_manifest" "admin" {
   yaml_body  = file("${var.k8s_path}/admin/admin.yaml")
-  depends_on = [kubectl_manifest.admin_namespace]
+  depends_on = [
+    kubectl_manifest.admin_namespace,
+    docker_image.services
+  ]
 }
 
 resource "kubectl_manifest" "city_namespaces" {
@@ -47,5 +76,8 @@ resource "kubectl_manifest" "city_manifests" {
     "city-${each.value.city}-namespace"
   )
 
-  depends_on = [kubectl_manifest.city_namespaces]
+  depends_on = [
+    kubectl_manifest.city_namespaces,
+    docker_image.services
+  ]
 }

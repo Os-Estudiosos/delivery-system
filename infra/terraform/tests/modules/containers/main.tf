@@ -106,32 +106,11 @@ resource "docker_container" "dynamodb_admin" {
   depends_on = [docker_container.localstack]
 }
 
-# Serviços da aplicação
-locals {
-  services = {
-    admin       = { port = 4000, context = "../../admin" }
-    clients     = { port = 4001, context = "../../clients" }
-    couriers    = { port = 4002, context = "../../couriers" }
-    matching    = { port = 4003, context = "../../matching" }
-    orders      = { port = 4004, context = "../../orders" }
-    restaurants = { port = 4005, context = "../../restaurants" }
-  }
-}
-
-resource "docker_image" "services" {
-  for_each = local.services
-  name     = "delivery-system/${each.key}:latest"
-
-  build {
-    context = each.value.context
-  }
-}
-
 # Positions consumer
 resource "docker_image" "positions" {
   name = "delivery-system/positions:latest"
   build {
-    context = "../../positions"
+    context = "../../../positions"
   }
 }
 

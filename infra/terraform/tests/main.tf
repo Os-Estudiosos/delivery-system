@@ -17,8 +17,10 @@ terraform {
 
 provider "aws" {
   region                      = var.aws_region
-  access_key                  = var.aws_access_key
-  secret_key                  = var.aws_secret_key
+  access_key                  = var.aws_access_key_id
+  secret_key                  = var.aws_secret_access_key
+  token                       = var.aws_session_token
+
   skip_credentials_validation = var.is_local
   skip_metadata_api_check     = var.is_local
   skip_requesting_account_id  = var.is_local
@@ -78,5 +80,5 @@ module "rds" {
 
 module "kubernetes" {
   source   = "./modules/kubernetes"
-  k8s_path = "${path.root}/../k8s"
+  k8s_path = "${path.root}/../../k8s"
 }
