@@ -10,7 +10,7 @@ export const options = {
 };
 
 export default function () {
-  const res = http.get('http://localhost:30040/health');
+  const res = http.get('http://host.docker.internal:30040/health');
   check(res, { 'status 200': (r) => r.status === 200 });
   sleep(1);
 }

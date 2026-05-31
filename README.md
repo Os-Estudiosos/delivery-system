@@ -29,20 +29,35 @@ docker compose up -d
 docker exec -it localstack awslocal sqs create-queue --queue-name courier-locations
 ```
 
-4. Garanta que o Kubernetes do Docker Desktop esta habilitado e selecione o contexto:
+4. Garanta que o Kubernetes do Docker Desktop está habilitado e selecione o contexto:
 
 ```sh
 kubectl config use-context docker-desktop
 ```
 
-5. Crie os namespaces:
+5. Instale o NGINX Ingress Controller:
+
+```sh
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/cloud/deploy.yaml
+
+kubectl wait --namespace ingress-nginx --for=condition=ready pod --selector=app.kubernetes.io/component=controller --timeout=300s
+```
+
+> **Observação:** os manifests `service-local.yaml` utilizam recursos Ingress. Sem o NGINX Ingress Controller instalado, o Kubernetes retornará erros semelhantes a:
+>
+> ```txt
+> failed calling webhook "validate.nginx.ingress.kubernetes.io"
+> service "ingress-nginx-controller-admission" not found
+> ```
+
+6. Crie os namespaces:
 
 ```sh
 kubectl apply -f infra/k8s/admin/namespace.yaml
 kubectl apply -f infra/k8s/city/namespace-template.yaml
 ```
 
-6. Aplique ConfigMaps e Secrets locais (host.docker.internal para Postgres/Localstack):
+7. Aplique ConfigMaps e Secrets locais (host.docker.internal para Postgres/Localstack):
 
 ```sh
 kubectl apply -f infra/k8s/config/local/admin-configmap.yaml
@@ -51,7 +66,7 @@ kubectl apply -f infra/k8s/config/local/city-configmap.yaml
 kubectl apply -f infra/k8s/config/local/city-secret.yaml
 ```
 
-7. Suba os deployments e services:
+8. Suba os deployments e services:
 
 ```sh
 kubectl apply -f infra/k8s/admin/admin.yaml
@@ -200,7 +215,13 @@ kubectl delete -f infra/k8s/admin/namespace.yaml
 kubectl delete -f infra/k8s/city/namespace-template.yaml
 ```
 
-2. Pare e remova containers e volumes locais:
+2. Remova o NGINX Ingress Controller:
+
+```sh
+kubectl delete -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/cloud/deploy.yaml
+```
+
+3. Pare e remova containers e volumes locais:
 
 ```sh
 docker compose down -v
