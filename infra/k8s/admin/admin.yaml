@@ -19,6 +19,11 @@ spec:
         - name: admin
           image: delivery-system/admin:latest
           imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: app-config
+            - secretRef:
+                name: app-secret
           ports:
             - containerPort: 4000
           livenessProbe:
@@ -34,16 +39,20 @@ spec:
             initialDelaySeconds: 2
             periodSeconds: 5
 ---
-apiVersion: v1
-kind: Service
+apiVersion: networking.k8s.io/v1
+kind: Ingress
 metadata:
-  name: admin
+  name: admin-ingress
   namespace: admin-namespace
 spec:
-  selector:
-    app: admin
-  ports:
-    - name: http
-      port: 4000
-      targetPort: 4000
-  type: ClusterIP
+  rules:
+    - host: admin.admin-namespace.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: admin
+                port:
+                  number: 4000

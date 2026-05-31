@@ -1,0 +1,79 @@
+services:
+    localstack:
+        image: localstack/localstack:3.8
+        container_name: localstack
+        ports:
+            - "4566:4566"
+        environment:
+            - SERVICES=dynamodb,s3,sqs,iot
+            - DEBUG=1
+            - LS_LOG=info
+            - AWS_DEFAULT_REGION=us-east-1
+        volumes:
+            - ./.localstack:/var/lib/localstack
+            - /var/run/docker.sock:/var/run/docker.sock
+        networks:
+            - dijkfood
+        healthcheck:
+            test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4566/_localstack/health').read()"]
+            interval: 5s
+            timeout: 3s
+            retries: 20
+        
+    postgres:
+        image: postgres:16
+        container_name: database
+        environment:
+            POSTGRES_USER: postgres
+            POSTGRES_PASSWORD: postgres
+            POSTGRES_DB: dijkfood
+        ports:
+            - "5432:5432"
+        volumes:
+            - postgres_data:/var/lib/postgresql/data
+        networks:
+            - dijkfood
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U postgres -d dijkfood"]
+            interval: 5s
+            timeout: 3s
+            retries: 20
+
+    dynamodb_admin:
+        image: aaronshaf/dynamodb-admin
+        container_name: dynamodb_admin
+        ports:
+            - "8001:8001"
+        environment:
+            - DYNAMO_ENDPOINT=http://localstack:4566
+            - AWS_REGION=us-east-1
+            - AWS_ACCESS_KEY_ID=test
+            - AWS_SECRET_ACCESS_KEY=test
+            - DYNAMO_PORT=8001
+        depends_on:
+            - localstack
+        networks:
+            - dijkfood
+
+    positions:
+        container_name: positions
+        build:
+            context: ./positions
+        environment:
+            - AWS_DEFAULT_REGION=us-east-1
+            - AWS_ACCESS_KEY_ID=test
+            - AWS_SECRET_ACCESS_KEY=test
+            - SQS_ENDPOINT=http://localstack:4566
+            - DYNAMODB_ENDPOINT=http://localstack:4566
+            - SQS_QUEUE_URL=http://localstack:4566/000000000000/courier-locations
+        depends_on:
+            - localstack
+        networks:
+            - dijkfood
+
+networks:
+    dijkfood:
+        name: dijkfood
+
+volumes:
+    postgres_data:

@@ -19,6 +19,11 @@ spec:
         - name: restaurants
           image: delivery-system/restaurants:latest
           imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: app-config
+            - secretRef:
+                name: app-secret
           ports:
             - containerPort: 4005
           livenessProbe:
@@ -34,16 +39,20 @@ spec:
             initialDelaySeconds: 2
             periodSeconds: 5
 ---
-apiVersion: v1
-kind: Service
+apiVersion: networking.k8s.io/v1
+kind: Ingress
 metadata:
-  name: restaurants
+  name: restaurants-ingress
   namespace: city-example-namespace
 spec:
-  selector:
-    app: restaurants
-  ports:
-    - name: http
-      port: 4005
-      targetPort: 4005
-  type: ClusterIP
+  rules:
+    - host: restaurants.city-example-namespace.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: restaurants
+                port:
+                  number: 4005

@@ -1,0 +1,27 @@
+services:
+    k6:
+        image: grafana/k6
+        volumes:
+            - ./scripts:/scripts
+        networks:
+            - dijkfood
+
+    influxdb:
+        image: influxdb:1.8
+        environment:
+            - INFLUXDB_DB=k6
+        networks:
+            - dijkfood
+
+    grafana:
+        image: grafana/grafana
+        ports:
+            - "3000:3000"
+        environment:
+            - GF_AUTH_ANONYMOUS_ENABLED=true
+        networks:
+            - dijkfood
+
+networks:
+    dijkfood:
+        external: true
