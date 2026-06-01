@@ -19,7 +19,7 @@ services:
             interval: 5s
             timeout: 3s
             retries: 20
-        
+
     postgres:
         image: postgres:16
         container_name: database
@@ -31,6 +31,11 @@ services:
             - "5432:5432"
         volumes:
             - postgres_data:/var/lib/postgresql/data
+            # Scripts in /docker-entrypoint-initdb.d/ run once, on first boot
+            # (when the data volume is empty). To re-run, remove the volume:
+            #   docker compose down -v && docker compose up
+            - ./shared/database/sql/DROP.sql:/docker-entrypoint-initdb.d/00_DROP.sql:ro
+            - ./shared/database/sql/DDL.sql:/docker-entrypoint-initdb.d/01_DDL.sql:ro
         networks:
             - dijkfood
         healthcheck:
@@ -68,6 +73,32 @@ services:
             - SQS_QUEUE_URL=http://localstack:4566/000000000000/courier-locations
         depends_on:
             - localstack
+        networks:
+            - dijkfood
+
+    restaurants:
+        build:
+            context: .
+            dockerfile: restaurants/Dockerfile
+        container_name: restaurants
+        ports:
+            - "4005:4005"
+        environment:
+            - ENV=local
+            - DB_HOST=database
+            - DB_PORT=5432
+            - DB_USER=postgres
+            - DB_PASSWORD=postgres
+            - DB_NAME=dijkfood
+            - LOCALSTACK_ENDPOINT=http://localstack:4566
+            - AWS_DEFAULT_REGION=us-east-1
+            - AWS_ACCESS_KEY_ID=test
+            - AWS_SECRET_ACCESS_KEY=test
+        depends_on:
+            postgres:
+                condition: service_healthy
+            localstack:
+                condition: service_healthy
         networks:
             - dijkfood
 
