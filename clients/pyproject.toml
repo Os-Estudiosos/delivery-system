@@ -1,0 +1,11 @@
+[project]
+name = "clients"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["fastapi>=0.110.0", "uvicorn[standard]>=0.29.0"]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"

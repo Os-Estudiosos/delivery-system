@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: couriers
+  namespace: city-example-namespace
+  labels:
+    app: couriers
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: couriers
+  template:
+    metadata:
+      labels:
+        app: couriers
+    spec:
+      containers:
+        - name: couriers
+          image: delivery-system/couriers:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: app-config
+            - secretRef:
+                name: app-secret
+          ports:
+            - containerPort: 4002
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 4002
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 4002
+            initialDelaySeconds: 2
+            periodSeconds: 5
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: couriers-ingress
+  namespace: city-example-namespace
+spec:
+  rules:
+    - host: couriers.city-example-namespace.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: couriers
+                port:
+                  number: 4002

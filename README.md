@@ -1,118 +1,258 @@
-# Sistema de Delivery (DijkFood)
-Repositório direcionado a uma simulção de um sistema de delivery utilizando recursos da nuvem da AWS.
+# Delivery System
+Esse repositório traz uma infraestrutura kubernetes de um aplicativo de delivery idealizado para seguir a seguinte infraestrutura AWS
 
-O seguinte projeto foi parte da avaliação do curso **Computação na Nuvem**, lecionado pelo professor Thiago Pinheiro de Araújo e oferecido pela Fundação Getulio Vargas.
+![Infraestrutura](images/infra.svg)
 
-## Introdução
-O objetivo é projetar, implementar e implantar a plataforma DijkFood, um serviço de delivery de comida capaz de calcular rotas sobre o grafo viário de São Paulo, registrar o ciclo de vida completo de cada pedido e atender aos requisitos disponibilidade, escalabilidade automática e otimização de custo.
+## Como rodar
 
-Dentro do mundo simulado, existem clientes que fazem pedidos, restaurantes que realizam os pedidos dos clientes, entregadores que vão até as casas dos clientes com o pedido e administradores que são capazes de criar, atualizar e deletar restaurantes, pedidos e clientes.
+### Rodando localmente
 
-O serviço é fornecido através de uma API REST, junto com dois bancos de dados (PostgreSQL para dados estruturados e DynamoDB para dados não estruturados). Tais serviços serão construídos na AWS, populados e destruídos logo em seguida.
+1. Builde as imagens Docker de todos os serviços:
 
-## Relatório
-O relatório completo do projeto pode ser encontrado em *docs/report.pdf*.
-
-## Árvore do repositório
-```bash
-├───database
-│       connection.py
-│       create_graph.py
-│       dynamo_table.py
-│       models.py
-│       __init__.py
-│       
-├───docs
-│   │   report.pdf
-│   │   
-│   ├───diagrams
-│   │       Diagrama Dijksfood.png
-│   │       not_relational_schema.json
-│   │       relational_schema.png
-│   │       
-│   └───images
-│           Resultados 10ps.jpeg
-│       
-├───infranova
-│      compute.py
-│      config.py
-│      databases.py
-│      network.py
-│           
-├───routes
-│       courier.py
-│       delivery.py
-│       item.py
-│       kitchen.py
-│       order.py
-│       restaurant.py
-│       user.py
-│       __init__.py
-│       
-├───test
-│   └───e2e
-│           conftest.py
-│           test_routes_e2e.py
-│           
-├───utils
-│       aws_credentials.py
-│       cheapest_path.py
-│       __init__.py
-│
-├───deploy.py
-├───destroy.py
-├───docker-compose.yml
-├───env-template
-├───main.py
-├───README.md
-├───simulator.py
+```sh
+docker build -t delivery-system/admin:latest ./admin
+docker build -t delivery-system/clients:latest ./clients
+docker build -t delivery-system/couriers:latest ./couriers
+docker build -t delivery-system/matching:latest ./matching
+docker build -t delivery-system/orders:latest ./orders
+docker build -t delivery-system/restaurants:latest ./restaurants
 ```
 
-## Configurando o ambiente
-Execute o seguinte passo a passo no seu terminal
-```bash
-# Clonando o projeto
-git clone https://github.com/Os-Estudiosos/delivery-system.git # HTML
-ou
-git clone git@github.com:Os-Estudiosos/delivery-system.git # SSH
+2. Suba a infraestrutura local (postgres, localstack, dynamodb-admin e positions):
 
-# Entrando do repositório
-cd delivery-system
-
-# Instalando o uv (Powershell)
-irm https://astral.sh/uv/install.ps1 | iex
-$env:Path += ";$HOME\.local\bin"
-
-# Instalando o uv (Linux ou MacOS)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-ou
-wget -qO- https://astral.sh/uv/install.sh | sh
-ou
-curl -LsSf https://astral.sh/uv/0.11.7/install.sh | sh
-
-# Criando um ambiente virtual
-uv venv
-
-# Instalando as dependências
-uv sync
-```
-
-Agora, crie um arquivo **.env** na raiz do repositório, copie e cole o conteúdo do arquivo **env-template** e preencha conforme necessário.
-
-Para pegar as credenciais da AWS, vá em Learner Lab, clique em AWS Details, clique em AWS Cli, copie e cole o conteúdo em **~/.aws/credentials** (ou, se preferir, rode **aws configure** e siga o passo a passo). Além disso, coloque as credenciais no .env.
-
-Caso queira visualizar os containers no docker, abra o aplicativo Docker Desktop, vá na pasta do projeto e rode o seguinte comando:
-
-```bash
+```sh
 docker compose up -d
 ```
 
-## Executando o projeto
-Após todos os passos anteriores, rode o seguinte comando para realizar o deploy do projeto:
-```bash
-uv run deploy.py
+3. Crie a fila SQS dentro do localstack
+```sh
+docker exec -it localstack awslocal sqs create-queue --queue-name courier-locations
 ```
-ou
-```bash
-python deploy.py
+
+4. Garanta que o Kubernetes do Docker Desktop está habilitado e selecione o contexto:
+
+```sh
+kubectl config use-context docker-desktop
+```
+
+5. Instale o NGINX Ingress Controller:
+
+```sh
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/cloud/deploy.yaml
+
+kubectl wait --namespace ingress-nginx --for=condition=ready pod --selector=app.kubernetes.io/component=controller --timeout=300s
+```
+
+> **Observação:** os manifests `service-local.yaml` utilizam recursos Ingress. Sem o NGINX Ingress Controller instalado, o Kubernetes retornará erros semelhantes a:
+>
+> ```txt
+> failed calling webhook "validate.nginx.ingress.kubernetes.io"
+> service "ingress-nginx-controller-admission" not found
+> ```
+
+6. Crie os namespaces:
+
+```sh
+kubectl apply -f infra/k8s/admin/namespace.yaml
+kubectl apply -f infra/k8s/city/namespace-template.yaml
+```
+
+7. Aplique ConfigMaps e Secrets locais (host.docker.internal para Postgres/Localstack):
+
+```sh
+kubectl apply -f infra/k8s/config/local/admin-configmap.yaml
+kubectl apply -f infra/k8s/config/local/admin-secret.yaml
+kubectl apply -f infra/k8s/config/local/city-configmap.yaml
+kubectl apply -f infra/k8s/config/local/city-secret.yaml
+```
+
+8. Suba os deployments e services:
+
+```sh
+kubectl apply -f infra/k8s/admin/admin.yaml
+kubectl apply -f infra/k8s/city/clients.yaml
+kubectl apply -f infra/k8s/city/couriers.yaml
+kubectl apply -f infra/k8s/city/matching.yaml
+kubectl apply -f infra/k8s/city/orders.yaml
+kubectl apply -f infra/k8s/city/restaurants.yaml
+kubectl apply -f infra/k8s/admin/service-local.yaml
+kubectl apply -f infra/k8s/city/service-local.yaml
+```
+
+#### Portas locais (NodePort)
+
+- admin: http://localhost:30040
+- clients: http://localhost:30041
+- couriers: http://localhost:30042
+- orders: http://localhost:30044
+- restaurants: http://localhost:30045
+
+Obs: matching fica apenas como ClusterIP (sem NodePort).
+
+### Atualizando o código localmente
+
+Sempre que alterar o código de um serviço (rotas, lógica, conexão com banco, etc.), é necessário rebuildar a imagem Docker e restartar o deployment no Kubernetes. O Kubernetes não detecta mudanças no código automaticamente.
+
+**Para um serviço específico:**
+
+```sh
+# Rebuilda a imagem
+docker build -t delivery-system/<servico>:latest ./<servico>
+
+# Restarta o deployment
+kubectl rollout restart deployment/<servico> -n <namespace>
+
+# Acompanha até ficar pronto (opcional)
+kubectl rollout status deployment/<servico> -n <namespace>
+```
+
+Exemplos:
+
+```sh
+# Atualizando orders em uma cidade
+docker build -t delivery-system/orders:latest ./orders
+kubectl rollout restart deployment/orders -n city-sp-namespace
+kubectl rollout status deployment/orders -n city-sp-namespace
+
+# Atualizando admin
+docker build -t delivery-system/admin:latest ./admin
+kubectl rollout restart deployment/admin -n admin-namespace
+kubectl rollout status deployment/admin -n admin-namespace
+```
+
+**Para o positions (consumer SQS), que roda no Docker Compose:**
+
+```sh
+docker compose up -d --build positions
+```
+
+**Para rebuildar e restartar todos os serviços de uma vez:**
+
+```sh
+docker build -t delivery-system/admin:latest ./admin
+docker build -t delivery-system/clients:latest ./clients
+docker build -t delivery-system/couriers:latest ./couriers
+docker build -t delivery-system/matching:latest ./matching
+docker build -t delivery-system/orders:latest ./orders
+docker build -t delivery-system/restaurants:latest ./restaurants
+
+kubectl rollout restart deployment -n admin-namespace
+kubectl rollout restart deployment -n city-sp-namespace
+```
+
+### Rodando em producao (EKS)
+
+1. Provisione a infraestrutura via Terraform:
+
+```sh
+cd infra/terraform/aws
+terraform init
+terraform apply -var-file=prod.tfvars
+```
+
+2. Configure o kubeconfig para o cluster EKS criado pelo Terraform:
+
+```sh
+aws eks update-kubeconfig --name <cluster_name> --region us-east-1
+```
+
+3. Preencha os valores de producao:
+	- Atualize o endpoint RDS em `infra/k8s/config/prod/*-configmap.yaml`.
+	- Preencha as credenciais em `infra/k8s/config/prod/*-secret.yaml` (estes arquivos sao ignorados pelo git).
+
+4. Aplique namespaces, configs e deployments:
+
+```sh
+kubectl apply -f infra/k8s/admin/namespace.yaml
+kubectl apply -f infra/k8s/city/namespace-template.yaml
+
+kubectl apply -f infra/k8s/config/prod/admin-configmap.yaml
+kubectl apply -f infra/k8s/config/prod/admin-secret.yaml
+kubectl apply -f infra/k8s/config/prod/city-configmap.yaml
+kubectl apply -f infra/k8s/config/prod/city-secret.yaml
+
+kubectl apply -f infra/k8s/admin/admin.yaml
+kubectl apply -f infra/k8s/city/clients.yaml
+kubectl apply -f infra/k8s/city/couriers.yaml
+kubectl apply -f infra/k8s/city/matching.yaml
+kubectl apply -f infra/k8s/city/orders.yaml
+kubectl apply -f infra/k8s/city/restaurants.yaml
+kubectl apply -f infra/k8s/admin/service-prod.yaml
+kubectl apply -f infra/k8s/city/service-prod.yaml
+```
+
+### Verificacao rapida
+
+```sh
+kubectl get pods -n admin-namespace
+kubectl get pods -n city-example-namespace
+kubectl describe configmap app-config -n admin-namespace
+kubectl describe secret app-secret -n admin-namespace
+```
+
+### Remover tudo (cleanup)
+
+#### Local (Docker Desktop)
+
+1. Remova os recursos do Kubernetes:
+
+```sh
+kubectl delete -f infra/k8s/admin/admin.yaml
+kubectl delete -f infra/k8s/city/clients.yaml
+kubectl delete -f infra/k8s/city/couriers.yaml
+kubectl delete -f infra/k8s/city/matching.yaml
+kubectl delete -f infra/k8s/city/orders.yaml
+kubectl delete -f infra/k8s/city/restaurants.yaml
+kubectl delete -f infra/k8s/admin/service-local.yaml
+kubectl delete -f infra/k8s/city/service-local.yaml
+
+kubectl delete -f infra/k8s/config/local/admin-configmap.yaml
+kubectl delete -f infra/k8s/config/local/admin-secret.yaml
+kubectl delete -f infra/k8s/config/local/city-configmap.yaml
+kubectl delete -f infra/k8s/config/local/city-secret.yaml
+
+kubectl delete -f infra/k8s/admin/namespace.yaml
+kubectl delete -f infra/k8s/city/namespace-template.yaml
+```
+
+2. Remova o NGINX Ingress Controller:
+
+```sh
+kubectl delete -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/cloud/deploy.yaml
+```
+
+3. Pare e remova containers e volumes locais:
+
+```sh
+docker compose down -v
+```
+
+#### Producao (EKS)
+
+1. Remova os recursos do Kubernetes:
+
+```sh
+kubectl delete -f infra/k8s/admin/admin.yaml
+kubectl delete -f infra/k8s/city/clients.yaml
+kubectl delete -f infra/k8s/city/couriers.yaml
+kubectl delete -f infra/k8s/city/matching.yaml
+kubectl delete -f infra/k8s/city/orders.yaml
+kubectl delete -f infra/k8s/city/restaurants.yaml
+kubectl delete -f infra/k8s/admin/service-prod.yaml
+kubectl delete -f infra/k8s/city/service-prod.yaml
+
+kubectl delete -f infra/k8s/config/prod/admin-configmap.yaml
+kubectl delete -f infra/k8s/config/prod/admin-secret.yaml
+kubectl delete -f infra/k8s/config/prod/city-configmap.yaml
+kubectl delete -f infra/k8s/config/prod/city-secret.yaml
+
+kubectl delete -f infra/k8s/admin/namespace.yaml
+kubectl delete -f infra/k8s/city/namespace-template.yaml
+```
+
+2. Destrua a infraestrutura com Terraform:
+
+```sh
+cd infra/terraform/aws
+terraform destroy -var-file=prod.tfvars
 ```

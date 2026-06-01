@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: restaurants
+  namespace: city-example-namespace
+  labels:
+    app: restaurants
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: restaurants
+  template:
+    metadata:
+      labels:
+        app: restaurants
+    spec:
+      containers:
+        - name: restaurants
+          image: delivery-system/restaurants:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: app-config
+            - secretRef:
+                name: app-secret
+          ports:
+            - containerPort: 4005
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 4005
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 4005
+            initialDelaySeconds: 2
+            periodSeconds: 5
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: restaurants-ingress
+  namespace: city-example-namespace
+spec:
+  rules:
+    - host: restaurants.city-example-namespace.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: restaurants
+                port:
+                  number: 4005

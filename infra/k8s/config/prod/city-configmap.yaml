@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: city-example-namespace
+data:
+  DB_HOST: "<endpoint RDS>"
+  DB_PORT: "5432"
+  DB_NAME: "dijkfood"
+  AWS_DEFAULT_REGION: "us-east-1"

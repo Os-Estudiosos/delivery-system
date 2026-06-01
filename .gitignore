@@ -1,3 +1,17 @@
+**/*.tfstate
+**/*.tfstate.backup
+**/.terraform.lock.hcl
+**/.terraform/
+**/prod.tfvars
+**/.terraform.tfstate.lock.info
+
+/.localstack/
+/.postgres-data/
+
+# Kubernetes prod secrets
+infra/k8s/config/prod/admin-secret.yaml
+infra/k8s/config/prod/city-secret.yaml
+
 /.aws
 /cache
 /temp
@@ -139,14 +153,14 @@ celerybeat.pid
 *.sage.py
 
 # Environments
-.env
-.envrc
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
+**/.env
+**/.envrc
+**/.venv
+**/env/
+**/venv/
+**/ENV/
+**/env.bak/
+**/venv.bak/
 
 # Spyder project settings
 .spyderproject
