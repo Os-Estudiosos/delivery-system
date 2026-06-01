@@ -15,3 +15,5 @@ def health():
 
 app.include_router(kitchen_router)
 app.include_router(restaurant_router)
+
+# kubectl logs -n city-example-namespace restaurants-65f975bdd-g2zc2
