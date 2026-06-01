@@ -1,15 +1,8 @@
-terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-  }
-}
-
 resource "aws_s3_bucket" "dijkfood" {
   bucket        = "dijkfood-assets"
   force_destroy = false
+
+  tags = var.common_tags
 }
 
 resource "aws_s3_bucket_ownership_controls" "dijkfood" {

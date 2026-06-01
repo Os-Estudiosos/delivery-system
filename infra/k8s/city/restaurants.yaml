@@ -44,7 +44,10 @@ kind: Ingress
 metadata:
   name: restaurants-ingress
   namespace: city-example-namespace
+  annotations:
+    kubernetes.io/ingress.class: nginx
 spec:
+  ingressClassName: nginx
   rules:
     - host: restaurants.city-example-namespace.local
       http:

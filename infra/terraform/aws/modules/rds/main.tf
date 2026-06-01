@@ -1,15 +1,3 @@
-terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-  }
-}
-
-variable "db_username" {}
-variable "db_password" { sensitive = true }
-
 resource "aws_db_instance" "dijkfood" {
   identifier        = "dijkfood"
   engine            = "postgres"
@@ -21,11 +9,8 @@ resource "aws_db_instance" "dijkfood" {
   password          = var.db_password
 
   publicly_accessible     = false
-  skip_final_snapshot     = false
-  final_snapshot_identifier = "dijkfood-final"
+  skip_final_snapshot     = true
   backup_retention_period = 7
 
-  tags = {
-    Project = "dijkfood"
-  }
+  tags = var.common_tags
 }

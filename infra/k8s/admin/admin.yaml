@@ -44,7 +44,10 @@ kind: Ingress
 metadata:
   name: admin-ingress
   namespace: admin-namespace
+  annotations:
+    kubernetes.io/ingress.class: nginx
 spec:
+  ingressClassName: nginx
   rules:
     - host: admin.admin-namespace.local
       http:

@@ -1,12 +1,3 @@
-terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-  }
-}
-
 resource "aws_dynamodb_table" "courier_positions" {
   name         = "courier_positions"
   billing_mode = "PAY_PER_REQUEST"
@@ -36,4 +27,6 @@ resource "aws_dynamodb_table" "courier_positions" {
     write_capacity  = 0
     read_capacity   = 0
   }
+
+  tags = var.common_tags
 }
