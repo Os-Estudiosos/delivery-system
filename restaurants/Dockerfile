@@ -7,10 +7,13 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-COPY pyproject.toml README.md ./
+COPY shared/ ./shared/
+RUN pip install ./shared
+
+COPY restaurants/pyproject.toml restaurants/README.md ./
 RUN python -m pip install --upgrade pip setuptools wheel \
     && pip install .
 
-COPY . .
+COPY restaurants/ .
 
 CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT}"]
