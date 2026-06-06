@@ -49,3 +49,7 @@ module "dynamodb" {
 
   common_tags = local.common_tags
 }
+
+module "sqs" {
+  source = "./modules/sqs"
+}

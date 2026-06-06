@@ -28,6 +28,14 @@ docker build -t delivery-system/orders:latest ./orders
 docker build -t delivery-system/restaurants:latest ./restaurants
 ```
 
+```sh
+talvez para build de restaurantes:
+docker build \
+  -f restaurants/Dockerfile \
+  -t delivery-system/restaurants:latest \
+  .
+```
+
 ### 2) Subir infraestrutura local (Postgres, LocalStack, DynamoDB admin, positions)
 
 ```sh
