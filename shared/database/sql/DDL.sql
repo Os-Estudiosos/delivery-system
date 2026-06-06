@@ -25,14 +25,23 @@ EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
 -- -----------------------------------------------------------------
+-- region
+-- -----------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS region (
+    id   SERIAL       PRIMARY KEY,
+    name VARCHAR(255) NOT NULL UNIQUE
+);
+
+-- -----------------------------------------------------------------
 -- users
 -- -----------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS users (
-    id        SERIAL       PRIMARY KEY,
-    email     VARCHAR(255) NOT NULL UNIQUE,
-    name      VARCHAR(255) NOT NULL,
+    id        SERIAL           PRIMARY KEY,
+    email     VARCHAR(255)     NOT NULL UNIQUE,
+    name      VARCHAR(255)     NOT NULL,
     house_lat DOUBLE PRECISION NOT NULL,
-    house_lon DOUBLE PRECISION NOT NULL
+    house_lon DOUBLE PRECISION NOT NULL,
+    region_id INTEGER          NOT NULL REFERENCES region(id)
 );
 
 -- -----------------------------------------------------------------
@@ -60,7 +69,8 @@ CREATE TABLE IF NOT EXISTS restaurant (
     name            VARCHAR(255)     NOT NULL,
     lat             DOUBLE PRECISION NOT NULL,
     lon             DOUBLE PRECISION NOT NULL,
-    kitchen_type_id INTEGER          NOT NULL REFERENCES kitchen_type(id)
+    kitchen_type_id INTEGER          NOT NULL REFERENCES kitchen_type(id),
+    region_id       INTEGER          NOT NULL REFERENCES region(id)
 );
 
 -- -----------------------------------------------------------------
@@ -78,21 +88,22 @@ CREATE TABLE IF NOT EXISTS item (
 -- courier
 -- -----------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS courier (
-    id      SERIAL           PRIMARY KEY,
-    name    VARCHAR(255)     NOT NULL,
-    vehicle vehicle_type     NOT NULL,
-    lat     DOUBLE PRECISION NOT NULL,
-    lon     DOUBLE PRECISION NOT NULL
+    id        SERIAL           PRIMARY KEY,
+    name      VARCHAR(255)     NOT NULL,
+    vehicle   vehicle_type     NOT NULL,
+    lat       DOUBLE PRECISION NOT NULL,
+    lon       DOUBLE PRECISION NOT NULL,
+    region_id INTEGER          NOT NULL REFERENCES region(id)
 );
 
 -- -----------------------------------------------------------------
 -- orders
 -- -----------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS orders (
-    id            SERIAL                      PRIMARY KEY,
-    restaurant_id INTEGER                     NOT NULL REFERENCES restaurant(id),
-    user_id       INTEGER                     NOT NULL REFERENCES users(id),
-    created_at    TIMESTAMP WITH TIME ZONE    NOT NULL DEFAULT NOW()
+    id            SERIAL                   PRIMARY KEY,
+    restaurant_id INTEGER                  NOT NULL REFERENCES restaurant(id),
+    user_id       INTEGER                  NOT NULL REFERENCES users(id),
+    created_at    TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
 
 -- -----------------------------------------------------------------
@@ -130,6 +141,7 @@ CREATE TABLE IF NOT EXISTS event (
 -- -----------------------------------------------------------------
 CREATE INDEX IF NOT EXISTS idx_phones_user_id          ON phones(user_id);
 CREATE INDEX IF NOT EXISTS idx_restaurant_kitchen_type ON restaurant(kitchen_type_id);
+CREATE INDEX IF NOT EXISTS idx_restaurant_region       ON restaurant(region_id);
 CREATE INDEX IF NOT EXISTS idx_item_restaurant         ON item(restaurant_id);
 CREATE INDEX IF NOT EXISTS idx_orders_user             ON orders(user_id);
 CREATE INDEX IF NOT EXISTS idx_orders_restaurant       ON orders(restaurant_id);
@@ -137,3 +149,5 @@ CREATE INDEX IF NOT EXISTS idx_order_item_order        ON order_item(order_id);
 CREATE INDEX IF NOT EXISTS idx_delivery_courier        ON delivery(courier_id);
 CREATE INDEX IF NOT EXISTS idx_event_delivery          ON event(delivery_id);
 CREATE INDEX IF NOT EXISTS idx_event_status            ON event(status);
+CREATE INDEX IF NOT EXISTS idx_users_region            ON users(region_id);
+CREATE INDEX IF NOT EXISTS idx_courier_region          ON courier(region_id);

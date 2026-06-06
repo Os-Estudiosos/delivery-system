@@ -3,10 +3,8 @@
 -- Drops all objects in reverse FK dependency order.
 -- Safe to run multiple times (IF EXISTS everywhere).
 -- =============================================================
-
 -- Indexes are dropped automatically with their tables,
 -- but listed here for explicitness when doing partial resets.
-
 -- -----------------------------------------------------------------
 -- Tables (reverse FK order)
 -- -----------------------------------------------------------------
@@ -20,7 +18,7 @@ DROP TABLE IF EXISTS restaurant   CASCADE;
 DROP TABLE IF EXISTS kitchen_type CASCADE;
 DROP TABLE IF EXISTS phones       CASCADE;
 DROP TABLE IF EXISTS users        CASCADE;
-
+DROP TABLE IF EXISTS region       CASCADE;
 -- -----------------------------------------------------------------
 -- ENUMs
 -- -----------------------------------------------------------------
