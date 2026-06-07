@@ -1,5 +1,5 @@
 """
-dashboard.py — CidadeX Analytics Dashboard
+dashboard.py — Analytics Dashboard
 Visualiza os 6 indicadores operacionais a partir do PostgreSQL local.
 
 Usage:
@@ -26,7 +26,7 @@ DB_URL = os.getenv(
 )
 
 st.set_page_config(
-    page_title="CidadeX — Analytics",
+    page_title="Analytics",
     page_icon="🛵",
     layout="wide",
 )
@@ -160,7 +160,7 @@ DIAS_PT = {
 }
 
 # ── layout ────────────────────────────────────────────────────────────────────
-st.title("🛵 CidadeX — Analytics Dashboard")
+st.title("🛵 Analytics Dashboard")
 st.caption(f"Banco: `{DB_URL.split('@')[-1]}`  •  Atualização a cada 60s")
 
 # ── KPIs ──────────────────────────────────────────────────────────────────────
