@@ -106,6 +106,15 @@ Quando alterar o codigo de um servico, rebuilde a imagem e reinicie o deployment
 docker build -t delivery-system/orders:latest ./orders
 kubectl rollout restart deployment/orders -n city-sp-namespace
 kubectl rollout status deployment/orders -n city-sp-namespace
+
+docker build -t delivery-system/restaurants:latest ./restaurants
+kubectl rollout restart deployment/restaurants -n city-example-namespace
+kubectl rollout status deployment/restaurants -n city-example-namespace
+
+# Atualizando admin
+docker build -t delivery-system/admin:latest ./admin
+kubectl rollout restart deployment/admin -n admin-namespace
+kubectl rollout status deployment/admin -n admin-namespace
 ```
 
 Para o consumer positions (Docker Compose):
