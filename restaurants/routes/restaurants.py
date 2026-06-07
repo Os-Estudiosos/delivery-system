@@ -3,9 +3,9 @@ from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
-from database.connection import get_session
-from database.models import KitchenType, Restaurant
-from routes.kitchen import KitchenResponse
+from shared.database.connection import get_session
+from shared.database.models import KitchenType, Restaurant, Item, Region
+from restaurants.routes.kitchen import KitchenResponse
 
 router = APIRouter(prefix="/restaurant", tags=["restaurant"])
 
@@ -25,6 +25,7 @@ class RestaurantCreate(BaseModel):
     lat: float
     lon: float
     kitchen_type_id: int
+    region_id: int
 
 
 class RestaurantUpdate(BaseModel):
@@ -106,6 +107,16 @@ def _get_kitchen_or_404(kitchen_type_id: int, session: Session) -> KitchenType:
     return db_kitchen
 
 
+def _get_region_or_404(region_id: int, session: Session) -> Region:
+    db_region = session.query(Region).filter(Region.id == region_id).first()
+    if not db_region:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Region not found.",
+        )
+    return db_region
+
+
 # -----------------------------------------------------------------
 # Endpoints
 # -----------------------------------------------------------------
@@ -153,12 +164,14 @@ def create_restaurant(
     session: Session = Depends(get_session),
 ):
     db_kitchen = _get_kitchen_or_404(restaurant.kitchen_type_id, session)
+    db_region = _get_region_or_404(restaurant.region_id, session)
 
     db_restaurant = Restaurant(
         name=restaurant.name,
         lat=restaurant.lat,
         lon=restaurant.lon,
         kitchen_type=db_kitchen,
+        region=db_region,
     )
 
     session.add(db_restaurant)
@@ -223,3 +236,30 @@ def delete_restaurant(
     db_restaurant = _get_restaurant_or_404(restaurant_id, session)
     session.delete(db_restaurant)
     session.commit()
+
+
+class ItemCreate(BaseModel):
+    name: str
+    price: float
+
+
+@router.post("/{restaurant_id}/items", response_model=ItemResponse, status_code=status.HTTP_201_CREATED)
+def create_item(restaurant_id: int, item: ItemCreate, session: Session = Depends(get_session)):
+    restaurant = _get_restaurant_or_404(restaurant_id, session)
+
+    db_item = Item(name=item.name, price=item.price, restaurant_id=restaurant.id)
+    session.add(db_item)
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="item conflict")
+
+    session.refresh(db_item)
+    return ItemResponse(id=db_item.id, name=db_item.name, price=float(db_item.price))
+
+
+@router.get("/{restaurant_id}/items", response_model=list[ItemResponse])
+def list_items(restaurant_id: int, session: Session = Depends(get_session)):
+    restaurant = _get_restaurant_or_404(restaurant_id, session)
+    return [ItemResponse(id=i.id, name=i.name, price=float(i.price)) for i in restaurant.items]

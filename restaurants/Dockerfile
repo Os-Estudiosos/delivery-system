@@ -10,10 +10,8 @@ WORKDIR /app
 COPY shared/ ./shared/
 RUN pip install ./shared
 
-COPY restaurants/pyproject.toml restaurants/README.md ./
+COPY restaurants/ ./restaurants/
 RUN python -m pip install --upgrade pip setuptools wheel \
-    && pip install .
+    && pip install ./restaurants
 
-COPY restaurants/ .
-
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT}"]
+CMD ["sh", "-c", "uvicorn restaurants.main:app --host 0.0.0.0 --port ${PORT}"]

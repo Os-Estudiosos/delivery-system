@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
-from routes.kitchen import router as kitchen_router
-from routes.restaurants import router as restaurant_router
+from restaurants.routes.kitchen import router as kitchen_router
+from restaurants.routes.restaurants import router as restaurant_router
 
 app = FastAPI(title="restaurants-service")
 

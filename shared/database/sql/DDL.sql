@@ -36,6 +36,20 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 -- -----------------------------------------------------------------
+-- region
+-- -----------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS region (
+    id   SERIAL       PRIMARY KEY,
+    name VARCHAR(255) NOT NULL UNIQUE
+);
+
+-- Add region_id to users (nullable for backward compatibility)
+DO $$ BEGIN
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS region_id INTEGER REFERENCES region(id);
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+-- -----------------------------------------------------------------
 -- phones  (composite PK: user_id + phone)
 -- -----------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS phones (
@@ -60,7 +74,8 @@ CREATE TABLE IF NOT EXISTS restaurant (
     name            VARCHAR(255)     NOT NULL,
     lat             DOUBLE PRECISION NOT NULL,
     lon             DOUBLE PRECISION NOT NULL,
-    kitchen_type_id INTEGER          NOT NULL REFERENCES kitchen_type(id)
+    kitchen_type_id INTEGER          NOT NULL REFERENCES kitchen_type(id),
+    region_id       INTEGER                        REFERENCES region(id)
 );
 
 -- -----------------------------------------------------------------
