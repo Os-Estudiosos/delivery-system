@@ -1,0 +1,22 @@
+[project]
+name = "analytics"
+version = "0.1.0"
+description = "Seed e ferramentas de analytics para o CidadeX"
+requires-python = ">=3.11"
+
+dependencies = [
+    "sqlalchemy>=2.0",
+    "psycopg2-binary>=2.9",
+    "python-dotenv>=1.0",
+    "faker>=24.0",
+    "streamlit>=1.35",
+    "plotly>=5.22",
+    "pandas>=2.2",
+    "boto3>=1.34",
+]
+
+[tool.uv]
+# Permite importar shared/ do root do repositório sem instalá-lo como pacote
+# Execute sempre a partir do diretório analytics/:
+#   cd analytics && uv run seed.py
+#   cd analytics && uv run streamlit run dashboard.py
