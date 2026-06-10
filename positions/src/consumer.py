@@ -2,6 +2,7 @@ import boto3
 import json
 import logging
 import os
+from decimal import Decimal
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ def delete_batch(messages: list[dict]):
 def deduplicate(messages: list[dict]) -> list[dict]:
     latest: dict[str, dict] = {}
     for msg in messages:
-        body = json.loads(msg["Body"])
+        body = json.loads(msg["Body"], parse_float=Decimal)
         cid  = body["courier_id"]
         if cid not in latest or body["timestamp"] > latest[cid]["timestamp"]:
             latest[cid] = body
