@@ -4,6 +4,7 @@ kubectl delete -f infra/k8s/city/couriers.yaml
 kubectl delete -f infra/k8s/city/matching.yaml
 kubectl delete -f infra/k8s/city/orders.yaml
 kubectl delete -f infra/k8s/city/restaurants.yaml
+kubectl delete -f infra/k8s/city/region.yaml
 kubectl delete -f infra/k8s/admin/service-local.yaml
 kubectl delete -f infra/k8s/city/service-local.yaml
 

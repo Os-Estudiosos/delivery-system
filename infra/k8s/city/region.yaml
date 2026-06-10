@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: region
+  namespace: city-example-namespace
+  labels:
+    app: region
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: region
+  template:
+    metadata:
+      labels:
+        app: region
+    spec:
+      containers:
+        - name: region
+          image: delivery-system/region:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: app-config
+            - secretRef:
+                name: app-secret
+          ports:
+            - containerPort: 4006
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 4006
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 4006
+            initialDelaySeconds: 2
+            periodSeconds: 5
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: region-ingress
+  namespace: city-example-namespace
+spec:
+  rules:
+    - host: region.city-example-namespace.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: region
+                port:
+                  number: 4006

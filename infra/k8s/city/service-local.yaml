@@ -71,3 +71,18 @@ spec:
       targetPort: 4005
       nodePort: 30045
   type: NodePort
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: region
+  namespace: city-example-namespace
+spec:
+  selector:
+    app: region
+  ports:
+    - name: http
+      port: 4006
+      targetPort: 4006
+      nodePort: 30046
+  type: NodePort

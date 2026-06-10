@@ -20,6 +20,7 @@ DROP TABLE IF EXISTS restaurant   CASCADE;
 DROP TABLE IF EXISTS kitchen_type CASCADE;
 DROP TABLE IF EXISTS phones       CASCADE;
 DROP TABLE IF EXISTS users        CASCADE;
+DROP TABLE IF EXISTS region       CASCADE;
 
 -- -----------------------------------------------------------------
 -- ENUMs

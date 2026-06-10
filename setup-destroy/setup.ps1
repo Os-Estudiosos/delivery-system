@@ -5,6 +5,7 @@ docker build -t delivery-system/couriers:latest ./couriers
 docker build -t delivery-system/matching:latest ./matching
 docker build -t delivery-system/orders:latest ./orders
 docker build -t delivery-system/restaurants:latest -f restaurants/Dockerfile .
+docker build -t delivery-system/region:latest -f region/Dockerfile .
 
 # Subir infraestrutura local
 docker compose up -d
@@ -42,6 +43,7 @@ kubectl apply -f infra/k8s/city/couriers.yaml
 kubectl apply -f infra/k8s/city/matching.yaml
 kubectl apply -f infra/k8s/city/orders.yaml
 kubectl apply -f infra/k8s/city/restaurants.yaml
+kubectl apply -f infra/k8s/city/region.yaml
 
 # Services
 kubectl apply -f infra/k8s/admin/service-local.yaml
