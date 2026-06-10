@@ -44,7 +44,10 @@ kind: Ingress
 metadata:
   name: orders-ingress
   namespace: city-example-namespace
+  annotations:
+    kubernetes.io/ingress.class: nginx
 spec:
+  ingressClassName: nginx
   rules:
     - host: orders.city-example-namespace.local
       http:

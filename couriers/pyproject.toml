@@ -4,7 +4,17 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["fastapi>=0.110.0", "uvicorn[standard]>=0.29.0"]
+dependencies = [
+	"fastapi>=0.110.0",
+	"uvicorn[standard]>=0.29.0",
+	"sqlalchemy>=2.0.0",
+	"pydantic>=2.0.0",
+	"python-dotenv>=0.9.0",
+	"psycopg2-binary>=2.9",
+	"shared",
+]
+[tool.uv.sources]
+shared = { path = "../shared", editable = true }
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]
