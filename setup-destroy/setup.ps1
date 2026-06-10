@@ -1,11 +1,13 @@
-# Build das imagens Docker
+# admin (não usa shared, contexto próprio)
 docker build -t delivery-system/admin:latest ./admin
-docker build -t delivery-system/clients:latest ./clients
-docker build -t delivery-system/couriers:latest ./couriers
-docker build -t delivery-system/matching:latest ./matching
-docker build -t delivery-system/orders:latest ./orders
+
+# serviços que usam shared — contexto é a raiz
+docker build -t delivery-system/clients:latest   -f clients/Dockerfile   .
+docker build -t delivery-system/couriers:latest  -f couriers/Dockerfile  .
+docker build -t delivery-system/matching:latest  -f matching/Dockerfile  .
+docker build -t delivery-system/orders:latest    -f orders/Dockerfile    .
 docker build -t delivery-system/restaurants:latest -f restaurants/Dockerfile .
-docker build -t delivery-system/region:latest -f region/Dockerfile .
+docker build -t delivery-system/region:latest    -f region/Dockerfile    .
 
 # Subir infraestrutura local
 docker compose up -d
