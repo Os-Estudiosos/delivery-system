@@ -18,7 +18,7 @@ app = FastAPI(title="matching-service")
 ENV = os.environ.get("ENV", "local").lower()
 REGION = os.environ.get("AWS_REGION", "us-east-1")
 S3_BUCKET = os.environ.get("S3_BUCKET")
-CITY_NAME = os.environ.get("CITY_NAME", "São Paulo, Brazil")
+CITY_NAME = os.environ.get("CITY_NAME", "Russas, Ceará, Brazil")
 REGION_ID = int(os.environ.get("REGION_ID", "1"))
 AWS_ENDPOINT = os.environ.get("AWS_ENDPOINT") or os.environ.get("LOCALSTACK_ENDPOINT")
 

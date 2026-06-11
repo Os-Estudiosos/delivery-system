@@ -27,6 +27,7 @@ BASE_CLIENT="http://localhost:4001"
 BASE_COURIER="http://localhost:4002"
 BASE_RESTAURANT="http://localhost:4005"
 BASE_ORDER="http://localhost:4004"
+RAND=$((RANDOM % 100000 + 1))
 
 # ─────────────────────────────────────────────
 sep "HEALTH CHECKS"
@@ -56,7 +57,7 @@ check "GET /region/ (lista)" 200 "$STATUS" "$BODY"
 # Criar nova região
 R=$(curl -s -w "\n%{http_code}" -X POST "$BASE_REGION/region/" \
   -H "Content-Type: application/json" \
-  -d '{"name":"Campinas, Brazil"}')
+  -d "{\"name\":\"Campinas ${RAND}, Brazil\"}")
 STATUS=$(echo "$R" | tail -1); BODY=$(echo "$R" | head -1)
 check "POST /region/ (criar)" 201 "$STATUS" "$BODY"
 REGION_ID=$(echo "$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])" 2>/dev/null || echo "2")
@@ -69,7 +70,7 @@ check "GET /region/$REGION_ID" 200 "$STATUS" ""
 # PATCH
 R=$(curl -s -w "\n%{http_code}" -X PATCH "$BASE_REGION/region/$REGION_ID" \
   -H "Content-Type: application/json" \
-  -d '{"name":"Campinas Updated"}')
+  -d "{\"name\":\"Campinas ${RAND} Updated\"}")
 STATUS=$(echo "$R" | tail -1)
 check "PATCH /region/$REGION_ID" 200 "$STATUS" ""
 
@@ -83,7 +84,7 @@ sep "KITCHEN TYPE — CRUD"
 # ─────────────────────────────────────────────
 R=$(curl -s -w "\n%{http_code}" -X POST "$BASE_RESTAURANT/kitchen/" \
   -H "Content-Type: application/json" \
-  -d '{"type":"Italiana"}')
+  -d "{\"type\":\"Italiana ${RAND}\"}")
 STATUS=$(echo "$R" | tail -1); BODY=$(echo "$R" | head -1)
 check "POST /kitchen/" 200 "$STATUS" "$BODY"
 KIT_ID=$(echo "$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])" 2>/dev/null || echo "1")
@@ -96,7 +97,7 @@ check "GET /kitchen/$KIT_ID" 200 "$(echo "$R" | tail -1)" ""
 
 R=$(curl -s -w "\n%{http_code}" -X PATCH "$BASE_RESTAURANT/kitchen/$KIT_ID" \
   -H "Content-Type: application/json" \
-  -d '{"type":"Italiana Updated"}')
+  -d "{\"type\":\"Italiana ${RAND} Updated\"}")
 check "PATCH /kitchen/$KIT_ID" 200 "$(echo "$R" | tail -1)" ""
 
 # ─────────────────────────────────────────────
@@ -146,7 +147,7 @@ sep "CLIENT — CRUD"
 # ─────────────────────────────────────────────
 R=$(curl -s -w "\n%{http_code}" -X POST "$BASE_CLIENT/client" \
   -H "Content-Type: application/json" \
-  -d '{"email":"joao@test.com","name":"João Silva","house_lat":-23.551,"house_lon":-46.634,"region_id":1}')
+  -d "{\"email\":\"joao_${RAND}@test.com\",\"name\":\"João Silva\",\"house_lat\":-23.551,\"house_lon\":-46.634,\"region_id\":1,\"phones\":[\"1199999${RAND:0:4}\"]}")
 STATUS=$(echo "$R" | tail -1); BODY=$(echo "$R" | head -1)
 check "POST /client" 201 "$STATUS" "$BODY"
 CLIENT_ID=$(echo "$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])" 2>/dev/null || echo "1")
@@ -159,7 +160,7 @@ check "GET /client/$CLIENT_ID" 200 "$(echo "$R" | tail -1)" ""
 
 R=$(curl -s -w "\n%{http_code}" -X PATCH "$BASE_CLIENT/client/$CLIENT_ID" \
   -H "Content-Type: application/json" \
-  -d '{"name":"João Updated"}')
+  -d "{\"name\":\"João ${RAND} Updated\"}")
 check "PATCH /client/$CLIENT_ID" 200 "$(echo "$R" | tail -1)" ""
 
 # ─────────────────────────────────────────────

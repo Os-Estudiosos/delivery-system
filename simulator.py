@@ -4,6 +4,9 @@ import time
 import json
 import statistics
 import random
+import urllib.parse
+import re
+import socket
 from pathlib import Path
 
 # Armazena as latências para calcular o P95 no final
@@ -11,20 +14,150 @@ BASE_URL = ""
 latencies = []
 STATUS_FLOW = ["CONFIRMED", "PREPARING", "READY_FOR_PICKUP", "PICKED_UP", "IN_TRANSIT", "DELIVERED"]
 
+class LocalResolver(aiohttp.abc.AbstractResolver):
+    async def resolve(self, host, port=0, family=socket.AF_INET):
+        if host.endswith(".local"):
+            if Path("/var/run/secrets/kubernetes.io").exists():
+                parts = host.split(".")
+                if len(parts) >= 3:
+                    svc_name = parts[0]
+                    ns_name = parts[1]
+                    k8s_host = f"{svc_name}.{ns_name}.svc.cluster.local"
+                    ports_map = {
+                        "clients": 4001,
+                        "couriers": 4002,
+                        "orders": 4004,
+                        "restaurants": 4005,
+                        "region": 4006
+                    }
+                    k8s_port = ports_map.get(svc_name, port)
+                    try:
+                        loop = asyncio.get_running_loop()
+                        res = await loop.run_in_executor(None, socket.getaddrinfo, k8s_host, k8s_port, family)
+                        return [{
+                            "hostname": host,
+                            "host": item[4][0],
+                            "port": item[4][1],
+                            "family": item[0],
+                            "proto": item[2],
+                            "flags": 0
+                        } for item in res]
+                    except Exception as e:
+                        print(f"Failed to resolve internal K8s host {k8s_host}: {e}")
+            return [{
+                "hostname": host,
+                "host": "127.0.0.1",
+                "port": port,
+                "family": family,
+                "proto": 0,
+                "flags": 0
+            }]
+        try:
+            loop = asyncio.get_running_loop()
+            res = await loop.run_in_executor(None, socket.getaddrinfo, host, port, family)
+            return [{
+                "hostname": host,
+                "host": item[4][0],
+                "port": item[4][1],
+                "family": item[0],
+                "proto": item[2],
+                "flags": 0
+            } for item in res]
+        except Exception:
+            return [{
+                "hostname": host,
+                "host": "127.0.0.1",
+                "port": port,
+                "family": family,
+                "proto": 0,
+                "flags": 0
+            }]
+
+    async def close(self):
+        pass
+
+def get_url_for_path(url: str) -> str:
+    """Resolve a URL para o microsserviço correspondente em ambientes locais ou k8s multi-subdomínio."""
+    parsed = urllib.parse.urlparse(url)
+    path = parsed.path
+    if parsed.query:
+        path += "?" + parsed.query
+        
+    p = path.strip("/")
+    if p.startswith("kitchen") or p.startswith("restaurant") or p.startswith("item"):
+        service = "restaurants"
+    elif p.startswith("user") or p.startswith("client"):
+        service = "clients"
+    elif p.startswith("courier"):
+        service = "couriers"
+    elif p.startswith("order") or p.startswith("delivery"):
+        service = "orders"
+    elif p.startswith("region"):
+        service = "region"
+    else:
+        service = "orders"
+
+    hostname = parsed.hostname or "localhost"
+    port = parsed.port
+    
+    # 1. Caso com porta no localhost (Docker Compose ou NodePorts do Kind)
+    if port and (hostname == "localhost" or hostname == "127.0.0.1"):
+        port_str = str(port)
+        compose_ports = {
+            "clients": "4001",
+            "couriers": "4002",
+            "orders": "4004",
+            "restaurants": "4005",
+            "region": "4006"
+        }
+        node_ports = {
+            "clients": "30041",
+            "couriers": "30042",
+            "orders": "30044",
+            "restaurants": "30045",
+            "region": "30046"
+        }
+        
+        if port_str.startswith("400"):
+            new_port = compose_ports.get(service, "4004")
+        elif port_str.startswith("3004"):
+            new_port = node_ports.get(service, "30044")
+        else:
+            new_port = port_str
+            
+        return f"{parsed.scheme}://{hostname}:{new_port}{path}"
+
+    # 2. Caso de Ingress com subdomínio dinâmico no Kubernetes local (ex: http://city-10-campinas.local)
+    if hostname.endswith(".local") and not any(hostname.startswith(s + ".") for s in ["clients", "couriers", "orders", "restaurants", "region"]):
+        new_hostname = f"{service}.{hostname}"
+        port_str = f":{port}" if port else ""
+        return f"{parsed.scheme}://{new_hostname}{port_str}{path}"
+        
+    for s in ["clients", "couriers", "orders", "restaurants", "region"]:
+        if hostname.startswith(s + "."):
+            base_domain = hostname[len(s)+1:]
+            new_hostname = f"{service}.{base_domain}"
+            port_str = f":{port}" if port else ""
+            return f"{parsed.scheme}://{new_hostname}{port_str}{path}"
+
+    # 3. Produção (ALB na AWS) / Ingress Unificado
+    return url
+
 async def fetch(session, method, url, payload=None):
-    """Executa a requisição HTTP e mede a latência exata."""
+    """Executa a requisição HTTP, resolve a URL correta e mede a latência exata."""
+    resolved_url = get_url_for_path(url)
     start_time = time.perf_counter()
     data = None
     try:
         response = None
         if method == 'POST':
-            response = session.post(url, json=payload)
+            response = session.post(resolved_url, json=payload)
         elif method == 'PUT':
-            response = session.put(url, json=payload)
+            response = session.put(resolved_url, json=payload)
         elif method == 'PATCH':
-            response = session.patch(url, json=payload)
+            response = session.patch(resolved_url, json=payload)
         elif method == 'GET':
-            response = session.get(url)
+            response = session.get(resolved_url)
 
         if response is None:
             raise ValueError(f"Unsupported method: {method}")
@@ -39,8 +172,7 @@ async def fetch(session, method, url, payload=None):
                 except json.JSONDecodeError:
                     data = None
     except Exception as e:
-        # AQUI ESTÁ A CORREÇÃO: Printa o erro real do aiohttp e retorna status 0 para não confundir com erro da API
-        print(f"\n[ERRO DE CONEXÃO REAL] Falha ao tentar {method} em {url} -> {str(e)}")
+        print(f"\n[ERRO DE CONEXÃO REAL] Falha ao tentar {method} em {resolved_url} -> {str(e)}")
         status = 0 
         data = None
 
@@ -243,7 +375,7 @@ async def run_load_test(rps, duration, seed_ids, debug_first=False):
     print(f"\nIniciando teste de carga: {rps} RPS por {duration} segundos...")
     latencies.clear()
     
-    connector = aiohttp.TCPConnector(limit=0) # Remove limite de conexões
+    connector = aiohttp.TCPConnector(limit=0, resolver=LocalResolver()) # Remove limite de conexões e resolve *.local
     async with aiohttp.ClientSession(connector=connector) as session:
         queue = asyncio.Queue()
         stats = {"orders_completed": 0, "orders_scheduled": 0}
@@ -290,7 +422,7 @@ async def main(url: str):
     BASE_URL = url
     
     print("--- DijkFood Load Simulator ---")
-    connector = aiohttp.TCPConnector(limit=0)
+    connector = aiohttp.TCPConnector(limit=0, resolver=LocalResolver())
     async with aiohttp.ClientSession(connector=connector) as session:
         seed_ids = await seed_data(session)
 

@@ -53,9 +53,13 @@ echo "Applying namespaces and config..."
 kubectl apply -f infra/k8s/admin/namespace.yaml
 kubectl apply -f infra/k8s/city/namespace-template.yaml
 
+# Connect database and localstack containers to the kind network so that Kubernetes pods can access them
+docker network connect kind database || true
+docker network connect kind localstack || true
+
 # Discover container IPs dynamically to prevent failures on different hosts/runs
-DB_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' database || echo "172.18.0.2")
-LOCALSTACK_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' localstack || echo "172.18.0.3")
+DB_IP=$(docker inspect -f '{{.NetworkSettings.Networks.kind.IPAddress}}' database || echo "172.19.0.3")
+LOCALSTACK_IP=$(docker inspect -f '{{.NetworkSettings.Networks.kind.IPAddress}}' localstack || echo "172.19.0.4")
 
 echo "Using container IPs: DB=$DB_IP, LocalStack=$LOCALSTACK_IP"
 

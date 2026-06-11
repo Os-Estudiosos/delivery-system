@@ -1,0 +1,76 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: unified-ingress-prod
+  namespace: city-example-namespace
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - path: /client
+            pathType: Prefix
+            backend:
+              service:
+                name: clients
+                port:
+                  number: 4001
+          - path: /user
+            pathType: Prefix
+            backend:
+              service:
+                name: clients
+                port:
+                  number: 4001
+          - path: /courier
+            pathType: Prefix
+            backend:
+              service:
+                name: couriers
+                port:
+                  number: 4002
+          - path: /restaurant
+            pathType: Prefix
+            backend:
+              service:
+                name: restaurants
+                port:
+                  number: 4005
+          - path: /kitchen
+            pathType: Prefix
+            backend:
+              service:
+                name: restaurants
+                port:
+                  number: 4005
+          - path: /item
+            pathType: Prefix
+            backend:
+              service:
+                name: restaurants
+                port:
+                  number: 4005
+          - path: /order
+            pathType: Prefix
+            backend:
+              service:
+                name: orders
+                port:
+                  number: 4004
+          - path: /delivery
+            pathType: Prefix
+            backend:
+              service:
+                name: orders
+                port:
+                  number: 4004
+          - path: /region
+            pathType: Prefix
+            backend:
+              service:
+                name: region
+                port:
+                  number: 4006

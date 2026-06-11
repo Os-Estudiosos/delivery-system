@@ -2,6 +2,7 @@ import os
 import json
 import urllib.request
 import datetime
+import boto3
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
@@ -21,6 +22,53 @@ router = APIRouter(prefix='/delivery', tags=['delivery'])
 # Env config
 ENV = os.environ.get("ENV", "local").lower()
 MATCHING_ENDPOINT = os.environ.get("MATCHING_ENDPOINT", "http://matching:4003")
+AWS_ENDPOINT = os.environ.get("AWS_ENDPOINT") or os.environ.get("LOCALSTACK_ENDPOINT")
+AWS_REGION = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
+
+# SQS
+sqs_kwargs = {"region_name": AWS_REGION}
+if ENV == "local" and AWS_ENDPOINT:
+    sqs_kwargs["endpoint_url"] = AWS_ENDPOINT
+    sqs_kwargs["aws_access_key_id"] = "test"
+    sqs_kwargs["aws_secret_access_key"] = "test"
+
+sqs_client = boto3.client("sqs", **sqs_kwargs)
+
+
+def _get_analytics_queue_url():
+    queue_url = os.environ.get("ANALYTICS_SQS_QUEUE_URL")
+    if queue_url:
+        return queue_url
+    try:
+        resp = sqs_client.get_queue_url(QueueName="analytics-events")
+        return resp["QueueUrl"]
+    except Exception:
+        if AWS_ENDPOINT:
+            return f"{AWS_ENDPOINT}/000000000000/analytics-events"
+        return ""
+
+
+def _publish_analytics_event(order_id: int, status: str, restaurant_id: int, region_id: int):
+    queue_url = _get_analytics_queue_url()
+    if not queue_url:
+        print("Analytics SQS queue URL could not be resolved, skipping publish.")
+        return
+
+    timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    message_body = {
+        "order_id": order_id,
+        "status": status,
+        "restaurant_id": restaurant_id,
+        "region_id": region_id,
+        "timestamp": timestamp,
+    }
+    try:
+        sqs_client.send_message(
+            QueueUrl=queue_url,
+            MessageBody=json.dumps(message_body)
+        )
+    except Exception as e:
+        print(f"Error sending analytics event to SQS: {e}")
 
 # Schemas
 class OrderReference(BaseModel):
@@ -266,6 +314,13 @@ def update_delivery_status(delivery_id: int, payload: DeliveryStatusCreate, sess
 
     try:
         session.commit()
+        session.refresh(db_event)
+        _publish_analytics_event(
+            order_id=db_delivery.order.id,
+            status=payload.status.value,
+            restaurant_id=db_delivery.order.restaurant_id,
+            region_id=db_delivery.order.restaurant.region_id
+        )
     except IntegrityError:
         session.rollback()
         raise HTTPException(
@@ -273,5 +328,4 @@ def update_delivery_status(delivery_id: int, payload: DeliveryStatusCreate, sess
             detail='Delivery status could not be updated due to a constraint violation.',
         )
 
-    session.refresh(db_event)
     return _to_delivery_status_response(db_event)

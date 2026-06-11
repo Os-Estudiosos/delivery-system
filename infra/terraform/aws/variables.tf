@@ -32,11 +32,11 @@ variable "eks_cluster_name" {
 }
 
 variable "eks_cluster_role_arn" {
-  default = "arn:aws:iam::043830376165:role/c213967a5408241l15083359t1w043830-LabEksClusterRole-UZqtrw4Ps35H"
+  default = "arn:aws:iam::045437334962:role/c213967a5408241l15262584t1w045437-LabEksClusterRole-HHMppWrynLtQ"
 }
 
 variable "eks_node_role_arn" {
-  default = "arn:aws:iam::043830376165:role/c213967a5408241l15083359t1w043830376-LabEksNodeRole-2x8ymceYyHcW"
+  default = "arn:aws:iam::045437334962:role/c213967a5408241l15262584t1w045437334-LabEksNodeRole-W5SgIzC1F0jA"
 }
 
 variable "eks_attach_ecr_readonly" {
@@ -51,7 +51,7 @@ variable "ecr_repo_prefix" {
 
 variable "ecr_repositories" {
   type    = list(string)
-  default = ["admin", "clients", "couriers", "matching", "orders", "restaurants"]
+  default = ["admin", "clients", "couriers", "matching", "orders", "restaurants", "positions", "simulator"]
 }
 
 variable "ecr_force_delete" {

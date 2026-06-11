@@ -9,3 +9,5 @@ data:
   DB_NAME: "dijkfood"
   AWS_DEFAULT_REGION: "us-east-1"
   AWS_ENDPOINT: "http://172.18.0.3:4566"
+  CITY_NAME: "Russas, Ceará, Brazil"
+  REGION_ID: "1"

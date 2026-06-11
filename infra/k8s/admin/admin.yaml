@@ -1,3 +1,40 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: admin-sa
+  namespace: admin-namespace
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: admin-cluster-role
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "configmaps", "secrets", "services", "pods"]
+    verbs: ["*"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["*"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["*"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: admin-cluster-role-binding
+subjects:
+  - kind: ServiceAccount
+    name: admin-sa
+    namespace: admin-namespace
+roleRef:
+  kind: ClusterRole
+  name: admin-cluster-role
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -15,6 +52,7 @@ spec:
       labels:
         app: admin
     spec:
+      serviceAccountName: admin-sa
       containers:
         - name: admin
           image: delivery-system/admin:latest
@@ -26,6 +64,13 @@ spec:
                 name: app-secret
           ports:
             - containerPort: 4000
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
           livenessProbe:
             httpGet:
               path: /health
@@ -59,3 +104,23 @@ spec:
                 name: admin
                 port:
                   number: 4000
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: admin-hpa
+  namespace: admin-namespace
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: admin
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80

@@ -1,0 +1,17 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: load-simulator
+  namespace: admin-namespace
+spec:
+  template:
+    metadata:
+      labels:
+        app: load-simulator
+    spec:
+      containers:
+        - name: simulator
+          image: <SIMULATOR_IMAGE_URI>
+          args: ["<TARGET_URL>"]
+      restartPolicy: Never
+  backoffLimit: 1

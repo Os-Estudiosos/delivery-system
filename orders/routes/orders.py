@@ -42,6 +42,51 @@ if ENV == "local" and AWS_ENDPOINT:
 dynamodb_resource = boto3.resource("dynamodb", **dynamodb_kwargs)
 dynamodb_table = dynamodb_resource.Table("courier_positions")
 
+# SQS
+sqs_kwargs = {"region_name": AWS_REGION}
+if ENV == "local" and AWS_ENDPOINT:
+    sqs_kwargs["endpoint_url"] = AWS_ENDPOINT
+    sqs_kwargs["aws_access_key_id"] = "test"
+    sqs_kwargs["aws_secret_access_key"] = "test"
+
+sqs_client = boto3.client("sqs", **sqs_kwargs)
+
+
+def _get_analytics_queue_url():
+    queue_url = os.environ.get("ANALYTICS_SQS_QUEUE_URL")
+    if queue_url:
+        return queue_url
+    try:
+        resp = sqs_client.get_queue_url(QueueName="analytics-events")
+        return resp["QueueUrl"]
+    except Exception:
+        if AWS_ENDPOINT:
+            return f"{AWS_ENDPOINT}/000000000000/analytics-events"
+        return ""
+
+
+def _publish_analytics_event(order_id: int, status: str, restaurant_id: int, region_id: int):
+    queue_url = _get_analytics_queue_url()
+    if not queue_url:
+        print("Analytics SQS queue URL could not be resolved, skipping publish.")
+        return
+
+    timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    message_body = {
+        "order_id": order_id,
+        "status": status,
+        "restaurant_id": restaurant_id,
+        "region_id": region_id,
+        "timestamp": timestamp,
+    }
+    try:
+        sqs_client.send_message(
+            QueueUrl=queue_url,
+            MessageBody=json.dumps(message_body)
+        )
+    except Exception as e:
+        print(f"Error sending analytics event to SQS: {e}")
+
 # Schemas
 class RestaurantReference(BaseModel):
     id: int
@@ -296,6 +341,12 @@ def create_order(order: OrderCreate, session: Session = Depends(get_session)):
             session.add(db_event)
             session.commit()
             session.refresh(db_order)
+            _publish_analytics_event(
+                order_id=db_order.id,
+                status=OrderStatus.CONFIRMED.value,
+                restaurant_id=db_restaurant.id,
+                region_id=db_restaurant.region_id
+            )
         except Exception as e:
             print(f"Failed to assign delivery on order create: {e}")
             session.rollback()

@@ -20,6 +20,19 @@ locals {
   }
 }
 
+resource "aws_ecr_repository" "repos" {
+  for_each             = toset(var.ecr_repositories)
+  name                 = "${var.ecr_repo_prefix}/${each.key}"
+  image_tag_mutability = "MUTABLE"
+  force_delete         = var.ecr_force_delete
+
+  image_scanning_configuration {
+    scan_on_push = var.ecr_scan_on_push
+  }
+
+  tags = local.common_tags
+}
+
 module "rds" {
   source = "./modules/rds"
 
@@ -48,4 +61,18 @@ module "dynamodb" {
   source = "./modules/dynamodb"
 
   common_tags = local.common_tags
+}
+
+module "analytics" {
+  source = "./modules/analytics"
+
+  datalake_bucket_name = module.s3.datalake_bucket_name
+  datalake_bucket_arn  = module.s3.datalake_bucket_arn
+  common_tags          = local.common_tags
+}
+
+module "iot" {
+  source = "./modules/iot"
+
+  common_tags          = local.common_tags
 }

@@ -160,7 +160,7 @@ def _to_response(c: Courier) -> CourierResponse:
         vehicle=c.vehicle.value if isinstance(c.vehicle, VehicleType) else str(c.vehicle),
         lat=c.lat,
         lon=c.lon,
-        region_id=c.region_id,
+        region_id=c.region_id or REGION_ID,
     )
 
 

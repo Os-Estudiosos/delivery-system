@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DijkFood | Painel Admin & Analytics</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0b0f19;
+            --bg-secondary: rgba(17, 24, 39, 0.7);
+            --border-glass: rgba(255, 255, 255, 0.08);
+            --accent-primary: #6366f1; /* Indigo */
+            --accent-secondary: #10b981; /* Emerald */
+            --accent-tertiary: #a855f7; /* Purple */
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --card-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-main);
+            min-height: 100vh;
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(at 10% 20%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
+                radial-gradient(at 90% 80%, rgba(168, 85, 247, 0.15) 0px, transparent 50%);
+        }
+
+        h1, h2, h3, .brand-title {
+            font-family: 'Outfit', sans-serif;
+        }
+
+        /* Layout */
+        .app-container {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* Sidebar */
+        aside {
+            width: 280px;
+            background: var(--bg-secondary);
+            backdrop-filter: blur(16px);
+            border-right: 1px solid var(--border-glass);
+            padding: 2.5rem 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 2.5rem;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .brand-logo {
+            font-size: 2rem;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-tertiary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .brand-title {
+            font-size: 1.5rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+        }
+
+        .nav-menu {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .nav-item a {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            color: var(--text-muted);
+            text-decoration: none;
+            padding: 0.75rem 1rem;
+            border-radius: 12px;
+            font-weight: 600;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .nav-item.active a, .nav-item a:hover {
+            color: var(--text-main);
+            background: rgba(255, 255, 255, 0.05);
+            border-left: 4px solid var(--accent-primary);
+        }
+
+        /* Main Content */
+        main {
+            flex-grow: 1;
+            padding: 2.5rem;
+            overflow-y: auto;
+            max-height: 100vh;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2.5rem;
+        }
+
+        .user-panel {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-glass);
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--accent-secondary);
+            box-shadow: 0 0 12px var(--accent-secondary);
+        }
+
+        /* Grid */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(12, 1fr);
+            gap: 1.5rem;
+        }
+
+        /* Glassmorphism Card */
+        .card {
+            background: var(--bg-secondary);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border-glass);
+            border-radius: 24px;
+            padding: 1.75rem;
+            box-shadow: var(--card-shadow);
+            transition: transform 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+        }
+
+        .card-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .card-title i {
+            color: var(--accent-primary);
+        }
+
+        /* Colspans */
+        .col-12 { grid-column: span 12; }
+        .col-8 { grid-column: span 8; }
+        .col-6 { grid-column: span 6; }
+        .col-4 { grid-column: span 4; }
+
+        /* Form */
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin-bottom: 1.25rem;
+        }
+
+        label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-muted);
+        }
+
+        input {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-glass);
+            padding: 0.75rem 1rem;
+            border-radius: 12px;
+            color: var(--text-main);
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        input:focus {
+            border-color: var(--accent-primary);
+        }
+
+        button.btn-primary {
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-tertiary));
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 12px;
+            color: var(--text-main);
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            transition: all 0.3s;
+        }
+
+        button.btn-primary:hover {
+            opacity: 0.9;
+            transform: scale(1.02);
+            box-shadow: 0 0 20px rgba(99, 102, 241, 0.4);
+        }
+
+        /* City List Table */
+        .city-list {
+            margin-top: 1rem;
+            max-height: 250px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .city-item {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-glass);
+            padding: 0.75rem 1rem;
+            border-radius: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .city-name {
+            font-weight: 600;
+        }
+
+        .city-tag {
+            font-size: 0.75rem;
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--accent-secondary);
+            padding: 0.25rem 0.5rem;
+            border-radius: 6px;
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+
+        /* Chart Canvas wrapper */
+        .chart-container {
+            position: relative;
+            height: 280px;
+            width: 100%;
+        }
+
+        /* Notifications / Alerts */
+        .toast {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: rgba(17, 24, 39, 0.9);
+            border: 1px solid var(--accent-secondary);
+            padding: 1rem 1.5rem;
+            border-radius: 12px;
+            box-shadow: var(--card-shadow);
+            z-index: 1000;
+            transform: translateY(150%);
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .toast.show {
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside>
+            <div class="brand">
+                <i class="fa-solid fa-route brand-logo"></i>
+                <span class="brand-title">DijkFood Admin</span>
+            </div>
+            <ul class="nav-menu">
+                <li class="nav-item active">
+                    <a href="#"><i class="fa-solid fa-chart-pie"></i> Dashboard</a>
+                </li>
+            </ul>
+        </aside>
+
+        <!-- Main Workspace -->
+        <main>
+            <header>
+                <div>
+                    <h2>Painel de Controle Multirregional</h2>
+                    <p style="color: var(--text-muted); font-size: 0.9rem;">Gerencie as cidades ativas e acompanhe a volumetria da plataforma.</p>
+                </div>
+                <div class="user-panel">
+                    <span class="status-dot"></span>
+                    <span style="font-size: 0.85rem; font-weight: 600;">EKS Cluster Online</span>
+                </div>
+            </header>
+
+            <div class="dashboard-grid">
+                <!-- Multi-city Config -->
+                <div class="card col-4">
+                    <div class="card-title">
+                        <span>Nova Cidade / Região</span>
+                        <i class="fa-solid fa-map-location-dot"></i>
+                    </div>
+                    <form id="add-city-form">
+                        <div class="form-group">
+                            <label for="city-name">Nome da Região / Cidade</label>
+                            <input type="text" id="city-name" placeholder="Ex: Campinas, Brazil" required>
+                        </div>
+                        <button type="submit" class="btn-primary col-12">
+                            <i class="fa-solid fa-plus"></i> Provisionar Cidade
+                        </button>
+                    </form>
+                </div>
+
+                <div class="card col-8">
+                    <div class="card-title">
+                        <span>Cidades Ativas</span>
+                        <i class="fa-solid fa-city"></i>
+                    </div>
+                    <div class="city-list" id="city-list-container">
+                        <!-- Cidades dinâmicas aqui -->
+                    </div>
+                </div>
+
+                <!-- Charts Section -->
+                <div class="card col-8">
+                    <div class="card-title">
+                        <span>Volume de Pedidos no Tempo</span>
+                        <i class="fa-solid fa-chart-line"></i>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="volumeChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="card col-4">
+                    <div class="card-title">
+                        <span>Top 10 Restaurantes</span>
+                        <i class="fa-solid fa-trophy"></i>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="topRestaurantsChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="card col-6">
+                    <div class="card-title">
+                        <span>Tempo Médio por Etapa (s)</span>
+                        <i class="fa-solid fa-hourglass-half"></i>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="transitionChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="card col-6">
+                    <div class="card-title">
+                        <span>Histograma de Tempo Total de Entregas</span>
+                        <i class="fa-solid fa-chart-bar"></i>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="histogramChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="card col-6">
+                    <div class="card-title">
+                        <span>Distribuição de Pedidos por Região</span>
+                        <i class="fa-solid fa-chart-pie"></i>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="regionsChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="card col-6">
+                    <div class="card-title">
+                        <span>Heatmap de Demanda (Dia vs Hora)</span>
+                        <i class="fa-solid fa-fire"></i>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="heatmapChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="toast">
+        <i class="fa-solid fa-circle-check" style="color: var(--accent-secondary); font-size: 1.25rem;"></i>
+        <span id="toast-message" style="font-size: 0.9rem; font-weight: 600;">Cidade provisionada!</span>
+    </div>
+
+    <script>
+        // API Base URL (relative to this page)
+        const BASE_API = "";
+
+        // Elements
+        const addCityForm = document.getElementById("add-city-form");
+        const cityNameInput = document.getElementById("city-name");
+        const cityListContainer = document.getElementById("city-list-container");
+        const toast = document.getElementById("toast");
+        const toastMessage = document.getElementById("toast-message");
+
+        // Show toast notifications
+        function showNotification(message, success = true) {
+            toastMessage.textContent = message;
+            toast.style.borderColor = success ? "var(--accent-secondary)" : "var(--accent-primary)";
+            toast.classList.add("show");
+            setTimeout(() => {
+                toast.classList.remove("show");
+            }, 3000);
+        }
+
+        // Fetch and Render active cities
+        async function fetchCities() {
+            try {
+                const res = await fetch(`${BASE_API}/city`);
+                const cities = await res.json();
+                cityListContainer.innerHTML = "";
+                
+                if (cities.length === 0) {
+                    cityListContainer.innerHTML = `<p style="color: var(--text-muted); text-align: center; margin-top: 1rem;">Nenhuma cidade cadastrada ainda.</p>`;
+                    return;
+                }
+
+                cities.forEach(city => {
+                    const item = document.createElement("div");
+                    item.className = "city-item";
+                    item.style.flexDirection = "column";
+                    item.style.alignItems = "stretch";
+                    item.style.gap = "0.75rem";
+                    item.style.padding = "1.25rem";
+                    item.style.background = "rgba(30, 41, 59, 0.4)";
+                    item.style.border = "1px solid rgba(255, 255, 255, 0.05)";
+                    item.style.borderRadius = "0.5rem";
+                    item.style.marginBottom = "0.75rem";
+
+                    // Determine Status Colors & Badges
+                    let statusColor = "#9ca3af";
+                    let iconClass = "fa-spinner fa-spin";
+                    let statusLabel = city.detail || "Provisionando...";
+
+                    if (city.status === "ready") {
+                        statusColor = "var(--accent-secondary)";
+                        iconClass = "fa-circle-check";
+                    } else if (city.status === "downloading_map") {
+                        statusColor = "#f59e0b"; // Golden yellow
+                        iconClass = "fa-cloud-arrow-down fa-bounce";
+                    } else if (city.status === "error") {
+                        statusColor = "var(--accent-primary)";
+                        iconClass = "fa-circle-xmark";
+                    }
+
+                    // Generate Pod Status List HTML
+                    let podsHtml = "";
+                    if (city.pods && city.pods.length > 0) {
+                        podsHtml = `<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-top: 0.5rem; background: rgba(0,0,0,0.2); padding: 0.5rem; border-radius: 0.35rem; border: 1px solid rgba(255,255,255,0.02);">`;
+                        city.pods.forEach(pod => {
+                            const podReadyColor = pod.ready ? "var(--accent-secondary)" : "#eab308";
+                            const podIcon = pod.ready ? "fa-circle-check" : "fa-circle-notch fa-spin";
+                            podsHtml += `
+                                <div style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.75rem; color: #cbd5e1;">
+                                    <i class="fa-solid ${podIcon}" style="color: ${podReadyColor}; font-size: 0.8rem;"></i>
+                                    <span style="font-family: monospace;">${pod.name}</span>
+                                </div>
+                            `;
+                        });
+                        podsHtml += `</div>`;
+                    } else {
+                        podsHtml = `<div style="font-size: 0.75rem; color: var(--text-muted); font-style: italic; margin-top: 0.25rem;">Aguardando alocação dos pods no cluster...</div>`;
+                    }
+
+                    item.innerHTML = `
+                        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 0.5rem;">
+                            <span class="city-name" style="font-weight: 700; font-size: 1.05rem; display: flex; align-items: center; gap: 0.4rem; color: #f8fafc;">
+                                <i class="fa-solid fa-map-location-dot" style="color: var(--accent-primary)"></i> 
+                                ${city.name}
+                            </span>
+                            <span style="font-size: 0.8rem; color: ${statusColor}; font-weight: 600; display: flex; align-items: center; gap: 0.35rem;">
+                                <i class="fa-solid ${iconClass}"></i> ${statusLabel}
+                            </span>
+                        </div>
+                        <div style="display: flex; gap: 0.75rem; font-size: 0.75rem; color: var(--text-muted); padding-top: 0.25rem;">
+                            <span><strong>Região ID:</strong> ${city.id}</span>
+                            <span>•</span>
+                            <span><strong>Namespace:</strong> <span style="font-family: monospace; color: #94a3b8;">${city.namespace || "N/A"}</span></span>
+                        </div>
+                        ${podsHtml}
+                    `;
+                    cityListContainer.appendChild(item);
+                });
+            } catch (err) {
+                console.error("Error fetching cities:", err);
+            }
+        }
+
+        // Handle Add City Submit
+        addCityForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const cityName = cityNameInput.value.trim();
+            if (!cityName) return;
+
+            showNotification("Provisionando recursos K8s e registrando cidade...");
+            try {
+                const res = await fetch(`${BASE_API}/city`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ name: cityName })
+                });
+
+                if (res.status === 201) {
+                    const data = await res.json();
+                    showNotification(`Cidade '${cityName}' registrada e provisionada! Namespace: ${data.namespace}`, true);
+                    cityNameInput.value = "";
+                    fetchCities();
+                } else {
+                    const errData = await res.json();
+                    showNotification(`Erro: ${errData.detail || "Falha no provisionamento"}`, false);
+                }
+            } catch (err) {
+                showNotification("Erro de conexão ao tentar registrar cidade.", false);
+            }
+        });
+
+        // Initialize and Fetch Charts data
+        async function loadCharts() {
+            // Chart 1: Volume Over Time
+            try {
+                const res = await fetch(`${BASE_API}/analytics/volume-over-time`);
+                const data = await res.json();
+                new Chart(document.getElementById('volumeChart'), {
+                    type: 'line',
+                    data: {
+                        labels: data.labels,
+                        datasets: [{
+                            label: 'Volume de Pedidos',
+                            data: data.values,
+                            borderColor: '#6366f1',
+                            backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                            fill: true,
+                            tension: 0.4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { grid: { color: 'rgba(255, 255, 255, 0.05)' } },
+                            x: { grid: { color: 'rgba(255, 255, 255, 0.05)' } }
+                        }
+                    }
+                });
+            } catch(e) { console.error(e); }
+
+            // Chart 2: Top Restaurants
+            try {
+                const res = await fetch(`${BASE_API}/analytics/top-restaurants`);
+                const data = await res.json();
+                new Chart(document.getElementById('topRestaurantsChart'), {
+                    type: 'bar',
+                    data: {
+                        labels: data.labels,
+                        datasets: [{
+                            data: data.values,
+                            backgroundColor: '#a855f7',
+                            borderRadius: 8
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { grid: { color: 'rgba(255, 255, 255, 0.05)' } },
+                            x: { grid: { color: 'rgba(255, 255, 255, 0.05)' } }
+                        }
+                    }
+                });
+            } catch(e) { console.error(e); }
+
+            // Chart 3: Transition Times
+            try {
+                const res = await fetch(`${BASE_API}/analytics/transition-times`);
+                const data = await res.json();
+                new Chart(document.getElementById('transitionChart'), {
+                    type: 'bar',
+                    data: {
+                        labels: data.labels,
+                        datasets: [{
+                            data: data.values,
+                            backgroundColor: '#10b981',
+                            borderRadius: 6
+                        }]
+                    },
+                    options: {
+                        indexAxis: 'y',
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { grid: { display: false } },
+                            x: { grid: { color: 'rgba(255, 255, 255, 0.05)' } }
+                        }
+                    }
+                });
+            } catch(e) { console.error(e); }
+
+            // Chart 4: Delivery Histogram
+            try {
+                const res = await fetch(`${BASE_API}/analytics/delivery-histogram`);
+                const data = await res.json();
+                new Chart(document.getElementById('histogramChart'), {
+                    type: 'bar',
+                    data: {
+                        labels: data.labels,
+                        datasets: [{
+                            label: 'Nº de Pedidos',
+                            data: data.values,
+                            backgroundColor: '#3b82f6',
+                            borderRadius: 6
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { grid: { color: 'rgba(255, 255, 255, 0.05)' } },
+                            x: { grid: { display: false } }
+                        }
+                    }
+                });
+            } catch(e) { console.error(e); }
+
+            // Chart 5: Regions
+            try {
+                const res = await fetch(`${BASE_API}/analytics/regions`);
+                const data = await res.json();
+                new Chart(document.getElementById('regionsChart'), {
+                    type: 'doughnut',
+                    data: {
+                        labels: data.labels,
+                        datasets: [{
+                            data: data.values,
+                            backgroundColor: ['#6366f1', '#10b981', '#a855f7', '#f59e0b', '#ef4444'],
+                            borderWidth: 0
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { position: 'right', labels: { color: '#f3f4f6' } } }
+                    }
+                });
+            } catch(e) { console.error(e); }
+
+            // Chart 6: Heatmap (Simplified Bubble Chart for Heatmap Representation)
+            try {
+                const res = await fetch(`${BASE_API}/analytics/heatmap`);
+                const data = await res.json(); // returns array of {x: weekday_num, y: hour, r: order_count}
+                new Chart(document.getElementById('heatmapChart'), {
+                    type: 'bubble',
+                    data: {
+                        datasets: [{
+                            label: 'Volume de Pedidos',
+                            data: data.values,
+                            backgroundColor: 'rgba(239, 68, 68, 0.5)',
+                            borderColor: '#ef4444'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { 
+                                title: { display: true, text: 'Hora do Dia', color: '#9ca3af' },
+                                grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                                min: 0,
+                                max: 23
+                            },
+                            x: { 
+                                title: { display: true, text: 'Dia da Semana (1=Seg, 7=Dom)', color: '#9ca3af' },
+                                grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                                min: 1,
+                                max: 7
+                            }
+                        }
+                    }
+                });
+            } catch(e) { console.error(e); }
+        }
+
+        // Initialize on load
+        fetchCities();
+        loadCharts();
+
+        // Auto-refresh city status list every 3 seconds
+        setInterval(fetchCities, 3000);
+    </script>
+</body>
+</html>

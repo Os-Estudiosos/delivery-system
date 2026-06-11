@@ -36,6 +36,7 @@ class ClientCreate(BaseModel):
     house_lat: float
     house_lon: float
     region_id: int | None = None
+    phones: list[str] = []
 
 
 class ClientUpdate(BaseModel):
@@ -44,6 +45,7 @@ class ClientUpdate(BaseModel):
     house_lat: float | None = None
     house_lon: float | None = None
     region_id: int | None = None
+    phones: list[str] | None = None
 
 
 class ClientResponse(BaseModel):
@@ -53,6 +55,7 @@ class ClientResponse(BaseModel):
     house_lat: float
     house_lon: float
     region_id: int
+    phones: list[str] = []
 
 
 class UserCreate(BaseModel):
@@ -113,7 +116,7 @@ def get_client(session: Session, client_id: int) -> User | None:
     return session.query(User).filter(User.id == client_id).first()
 
 
-def create_client(session: Session, *, email: str, name: str, house_lat: float, house_lon: float, region_id: int | None = None) -> User:
+def create_client(session: Session, *, email: str, name: str, house_lat: float, house_lon: float, region_id: int | None = None, phones: list[str] = []) -> User:
     if region_id is None:
         region_id = REGION_ID
 
@@ -122,6 +125,8 @@ def create_client(session: Session, *, email: str, name: str, house_lat: float, 
         return None
 
     db_user = User(email=email, name=name, house_lat=house_lat, house_lon=house_lon, region_id=region_id)
+    for phone in phones:
+        db_user.phones.append(Phone(phone=phone))
     session.add(db_user)
     try:
         session.commit()
@@ -132,7 +137,7 @@ def create_client(session: Session, *, email: str, name: str, house_lat: float, 
     return db_user
 
 
-def update_client(session: Session, client: User, *, email: str | None = None, name: str | None = None, house_lat: float | None = None, house_lon: float | None = None, region_id: int | None = None) -> User:
+def update_client(session: Session, client: User, *, email: str | None = None, name: str | None = None, house_lat: float | None = None, house_lon: float | None = None, region_id: int | None = None, phones: list[str] | None = None) -> User:
     if region_id is not None:
         region = session.query(Region).filter(Region.id == region_id).first()
         if not region:
@@ -148,6 +153,11 @@ def update_client(session: Session, client: User, *, email: str | None = None, n
     if house_lon is not None:
         client.house_lon = house_lon
 
+    if phones is not None:
+        client.phones.clear()
+        for p in phones:
+            client.phones.append(Phone(phone=p))
+
     try:
         session.commit()
     except IntegrityError:
@@ -156,6 +166,8 @@ def update_client(session: Session, client: User, *, email: str | None = None, n
 
     session.refresh(client)
     return client
+
+
 
 
 def delete_client(session: Session, client: User) -> None:
@@ -242,6 +254,7 @@ def _to_response(u: User) -> ClientResponse:
         house_lat=u.house_lat,
         house_lon=u.house_lon,
         region_id=u.region_id or REGION_ID,
+        phones=[phone.phone for phone in u.phones],
     )
 
 
@@ -266,14 +279,21 @@ def get_one(client_id: int, session: Session = Depends(get_session)):
 
 @router.post("/client", response_model=ClientResponse, status_code=status.HTTP_201_CREATED)
 def create(client: ClientCreate, session: Session = Depends(get_session)):
-    db = create_client(
-        session,
-        email=client.email,
-        name=client.name,
-        house_lat=client.house_lat,
-        house_lon=client.house_lon,
-        region_id=client.region_id,
-    )
+    try:
+        db = create_client(
+            session,
+            email=client.email,
+            name=client.name,
+            house_lat=client.house_lat,
+            house_lon=client.house_lon,
+            region_id=client.region_id,
+            phones=client.phones,
+        )
+    except IntegrityError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Client already exists or payload violates constraints.",
+        )
     if db is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Region not found.")
     return _to_response(db)
@@ -282,15 +302,22 @@ def create(client: ClientCreate, session: Session = Depends(get_session)):
 @router.patch("/client/{client_id}", response_model=ClientResponse)
 def patch(client_id: int, client: ClientUpdate, session: Session = Depends(get_session)):
     db = _get_or_404(client_id, session)
-    updated = update_client(
-        session,
-        db,
-        email=client.email,
-        name=client.name,
-        house_lat=client.house_lat,
-        house_lon=client.house_lon,
-        region_id=client.region_id,
-    )
+    try:
+        updated = update_client(
+            session,
+            db,
+            email=client.email,
+            name=client.name,
+            house_lat=client.house_lat,
+            house_lon=client.house_lon,
+            region_id=client.region_id,
+            phones=client.phones,
+        )
+    except IntegrityError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Client update violates unique or database constraints.",
+        )
     if updated is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Region not found.")
     return _to_response(updated)

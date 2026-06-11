@@ -90,6 +90,8 @@ services:
             until aws --endpoint-url=http://localstack:4566 sqs list-queues > /dev/null 2>&1; do sleep 2; done;
             echo 'Criando fila SQS courier-locations...';
             aws --endpoint-url=http://localstack:4566 sqs create-queue --queue-name courier-locations || true;
+            echo 'Criando fila SQS analytics-events...';
+            aws --endpoint-url=http://localstack:4566 sqs create-queue --queue-name analytics-events || true;
             echo 'Criando tabela DynamoDB courier_positions...';
             aws --endpoint-url=http://localstack:4566 dynamodb create-table \
                 --table-name courier_positions \
@@ -228,7 +230,7 @@ services:
             - AWS_ACCESS_KEY_ID=test
             - AWS_SECRET_ACCESS_KEY=test
             - PORT=4003
-            - CITY_NAME=São Paulo, Brazil
+            - CITY_NAME=Russas, Ceará, Brazil
             - REGION_ID=1
         depends_on:
             postgres:

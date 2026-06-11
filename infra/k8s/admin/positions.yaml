@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: positions
+  namespace: admin-namespace
+  labels:
+    app: positions
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: positions
+  template:
+    metadata:
+      labels:
+        app: positions
+    spec:
+      containers:
+        - name: positions
+          image: delivery-system/positions:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: app-config
+            - secretRef:
+                name: app-secret
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi

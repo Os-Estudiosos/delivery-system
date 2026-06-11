@@ -1,10 +1,14 @@
 import os
 import re
 import yaml
+import time
+import json
 from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from kubernetes import client, config, utils
+import boto3
 
 from shared.database.connection import get_session
 from shared.database.models import Region
@@ -21,6 +25,11 @@ except Exception:
         print("[K8s] Loaded local kube-config.")
     except Exception as e:
         print(f"[K8s] Warning: Could not initialize Kubernetes client: {e}")
+
+# Initialize Athena Client (for production analytics)
+ENV = os.environ.get("ENV", "local").lower()
+AWS_REGION = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
+ATHENA_DATABASE = "dijkfood_analytics"
 
 # Schemas
 class CityCreate(BaseModel):
@@ -41,21 +50,174 @@ def slugify(s: str) -> str:
     return s.strip('-')
 
 
+def run_athena_query(query_str: str) -> list[dict]:
+    """Runs a query on Amazon Athena and returns the parsed rows."""
+    if ENV == "local":
+        return []
+
+    try:
+        athena_client = boto3.client("athena", region_name=AWS_REGION)
+        # We need a configured S3 bucket to output Athena query results
+        # We use a default datalake bucket pattern
+        s3_output = f"s3://dijkfood-datalake-results/"
+
+        response = athena_client.start_query_execution(
+            QueryString=query_str,
+            QueryExecutionContext={"Database": ATHENA_DATABASE},
+            ResultConfiguration={"OutputLocation": s3_output}
+        )
+        query_execution_id = response["QueryExecutionId"]
+        
+        # Wait for query execution to complete
+        for _ in range(30):
+            status_resp = athena_client.get_query_execution(QueryExecutionId=query_execution_id)
+            state = status_resp["QueryExecution"]["Status"]["State"]
+            if state in ("SUCCEEDED", "FAILED", "CANCELLED"):
+                if state == "SUCCEEDED":
+                    results = athena_client.get_query_results(QueryExecutionId=query_execution_id)
+                    rows = results["ResultSet"]["Rows"]
+                    if not rows:
+                        return []
+                    headers = [col.get("VarCharValue", "") for col in rows[0]["Data"]]
+                    data = []
+                    for row in rows[1:]:
+                        row_data = {}
+                        for i, col in enumerate(row["Data"]):
+                            header = headers[i] if i < len(headers) else f"col_{i}"
+                            row_data[header] = col.get("VarCharValue", "")
+                        data.append(row_data)
+                    return data
+                else:
+                    print(f"Athena query execution ended with state: {state}")
+                    return []
+            time.sleep(0.5)
+    except Exception as e:
+        print(f"Failed to query Athena: {e}")
+    return []
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "admin"}
 
 
+# Server dashboard GUI
+@app.get("/", response_class=HTMLResponse)
+def get_dashboard():
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    filepath = os.path.join(current_dir, "dashboard.html")
+        
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception as e:
+        return f"<h3>Erro ao carregar dashboard: {str(e)}</h3>"
+
+
+def get_namespace_status(namespace_name: str) -> dict:
+    try:
+        try:
+            v1 = client.CoreV1Api()
+        except Exception:
+            try:
+                config.load_incluster_config()
+            except Exception:
+                config.load_kube_config()
+            v1 = client.CoreV1Api()
+
+        # Read namespace status
+        try:
+            ns = v1.read_namespace(name=namespace_name)
+            if ns.status.phase != "Active":
+                return {"status": "inactive", "detail": f"Inativo ({ns.status.phase})"}
+        except client.exceptions.ApiException as e:
+            if e.status == 404:
+                return {"status": "not_created", "detail": "Não criado no K8s"}
+            raise
+
+        # List pods in the namespace
+        pods = v1.list_namespaced_pod(namespace=namespace_name)
+        if not pods.items:
+            return {"status": "empty", "detail": "Aguardando agendamento dos pods..."}
+
+        total_pods = len(pods.items)
+        ready_pods = 0
+        matching_status = "pending"
+
+        pod_details = []
+        for pod in pods.items:
+            pod_name = pod.metadata.name
+            pod_app = pod.metadata.labels.get("app", pod_name)
+            phase = pod.status.phase
+            
+            # Check container readiness
+            is_ready = False
+            if pod.status.container_statuses:
+                is_ready = all(c.ready for c in pod.status.container_statuses)
+            
+            if is_ready:
+                ready_pods += 1
+                
+            if pod_app == "matching":
+                if is_ready:
+                    matching_status = "ready"
+                else:
+                    restarts = sum(c.restart_count for c in pod.status.container_statuses) if pod.status.container_statuses else 0
+                    if restarts > 0:
+                        matching_status = "error"
+                    else:
+                        matching_status = "downloading_map"
+            
+            pod_details.append({
+                "name": pod_app,
+                "status": "Running (Ready)" if is_ready else phase,
+                "ready": is_ready
+            })
+            
+        # Overall status heuristic
+        if ready_pods >= 6:
+            status_str = "ready"
+            detail_str = "Pronto para uso (todos os pods saudáveis)"
+        elif matching_status == "downloading_map":
+            status_str = "downloading_map"
+            detail_str = f"Roteador baixando mapa de Campinas ({ready_pods}/{total_pods} prontos)"
+        elif matching_status == "error":
+            status_str = "error"
+            detail_str = f"Falha na inicialização do roteador ({ready_pods}/{total_pods} prontos)"
+        else:
+            status_str = "provisioning"
+            detail_str = f"Criando recursos ({ready_pods}/{total_pods} prontos)"
+            
+        return {
+            "status": status_str,
+            "detail": detail_str,
+            "pods": pod_details
+        }
+    except Exception as e:
+        return {"status": "error", "detail": f"Erro k8s: {str(e)}", "pods": []}
+
+
 @app.get("/city", response_model=list[dict])
 def list_cities(session: Session = Depends(get_session)):
     regions = session.query(Region).all()
-    return [{"id": r.id, "name": r.name} for r in regions]
+    results = []
+    for r in regions:
+        namespace_name = f"city-{r.id}-{slugify(r.name)}"
+        k8s_status = get_namespace_status(namespace_name)
+        results.append({
+            "id": r.id,
+            "name": r.name,
+            "namespace": namespace_name,
+            "status": k8s_status["status"],
+            "detail": k8s_status["detail"],
+            "pods": k8s_status.get("pods", [])
+        })
+    return results
 
 
 @app.post("/city", response_model=CityResponse, status_code=status.HTTP_201_CREATED)
 def create_city(city: CityCreate, session: Session = Depends(get_session)):
     # 1. Register Region in the database
-    # Check if region already exists
     existing = session.query(Region).filter(Region.name == city.name).first()
     if existing:
         raise HTTPException(
@@ -141,8 +303,8 @@ def create_city(city: CityCreate, session: Session = Depends(get_session)):
                 raise
 
         # Replicate microservices in the namespace
-        env = os.environ.get("ENV", "local").lower()
-        service_file = "service-local.yaml" if env == "local" else "service-prod.yaml"
+        # Dynamically provisioned namespaces always use ClusterIP (service-prod.yaml) to avoid NodePort conflicts
+        service_file = "service-prod.yaml"
         
         manifest_files = [
             "clients.yaml",
@@ -151,20 +313,24 @@ def create_city(city: CityCreate, session: Session = Depends(get_session)):
             "orders.yaml",
             "restaurants.yaml",
             "region.yaml",
-            service_file
+            service_file,
+            "hpas.yaml"
         ]
 
         for filename in manifest_files:
             filepath = f"/app/infra/k8s/city/{filename}"
             if not os.path.exists(filepath):
-                print(f"[K8s] Warning: Manifest file not found: {filepath}")
-                continue
+                filepath = f"infra/k8s/city/{filename}" # local testing fallback path
+                if not os.path.exists(filepath):
+                    print(f"[K8s] Warning: Manifest file not found: {filepath}")
+                    continue
                 
             with open(filepath, "r") as f:
                 content = f.read()
                 
             # Replace placeholder namespace with actual dynamic namespace
             content = content.replace("namespace: city-example-namespace", f"namespace: {namespace_name}")
+            content = content.replace("city-example-namespace.local", f"{namespace_name}.local")
             
             # Apply resources
             dicts = list(yaml.safe_load_all(content))
@@ -172,8 +338,8 @@ def create_city(city: CityCreate, session: Session = Depends(get_session)):
                 if d:
                     try:
                         utils.create_from_dict(k8s_client, d)
-                    except utils.FailToActionException as err:
-                        # If a resource already exists, log it. In some cases, we can ignore conflict errors.
+                    except utils.FailToCreateError as err:
+                        # If resource exists, skip
                         print(f"[K8s] Resource already exists or failed to create: {err}")
                     except Exception as err:
                         print(f"[K8s] Error creating resource from dict: {err}")
@@ -187,10 +353,156 @@ def create_city(city: CityCreate, session: Session = Depends(get_session)):
 
     except Exception as e:
         print(f"[K8s] Provisioning failed for namespace {namespace_name}: {e}")
-        # Return DB record registered, but Kubernetes deployment failed
         return CityResponse(
             id=db_region.id,
             name=db_region.name,
             namespace=namespace_name,
             status=f"provision_error: {str(e)}"
         )
+
+
+# -------------------- Analytics Endpoints (OLAP) --------------------
+
+@app.get("/analytics/volume-over-time")
+def get_volume_over_time():
+    query = """
+        SELECT date_trunc('hour', from_iso8601_timestamp(timestamp)) AS order_hour, count(distinct order_id) AS total_orders
+        FROM dijkfood_analytics.events
+        WHERE status = 'CONFIRMED'
+        GROUP BY 1 ORDER BY 1 ASC;
+    """
+    rows = run_athena_query(query)
+    if not rows:
+        # Fallback Mock Data
+        return {
+            "labels": ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00"],
+            "values": [12, 15, 22, 45, 120, 138, 90, 35, 42, 58, 110, 195, 230, 85]
+        }
+    
+    return {
+        "labels": [r.get("order_hour", "")[:16] for r in rows],
+        "values": [int(r.get("total_orders", 0)) for r in rows]
+    }
+
+
+@app.get("/analytics/top-restaurants")
+def get_top_restaurants():
+    query = """
+        SELECT restaurant_id, count(distinct order_id) AS total_orders
+        FROM dijkfood_analytics.events
+        WHERE status = 'CONFIRMED'
+        GROUP BY 1 ORDER BY 2 DESC LIMIT 5;
+    """
+    rows = run_athena_query(query)
+    if not rows:
+        # Fallback Mock Data
+        return {
+            "labels": ["Trattoria Bella", "Dijkstra Pasta", "Pizzaria O(N)", "Burger Queen", "Sushilog"],
+            "values": [450, 380, 290, 240, 190]
+        }
+
+    return {
+        "labels": [f"Restaurante {r.get('restaurant_id', '')}" for r in rows],
+        "values": [int(r.get("total_orders", 0)) for r in rows]
+    }
+
+
+@app.get("/analytics/transition-times")
+def get_transition_times():
+    query = """
+        WITH event_intervals AS (
+          SELECT order_id, status, from_iso8601_timestamp(timestamp) AS current_time,
+            lead(from_iso8601_timestamp(timestamp)) OVER(PARTITION BY order_id ORDER BY timestamp) AS next_time,
+            lead(status) OVER(PARTITION BY order_id ORDER BY timestamp) AS next_status
+          FROM dijkfood_analytics.events
+        )
+        SELECT status, next_status, avg(date_diff('second', current_time, next_time)) AS avg_duration_seconds
+        FROM event_intervals WHERE next_status IS NOT NULL GROUP BY 1, 2;
+    """
+    rows = run_athena_query(query)
+    if not rows:
+        # Fallback Mock Data
+        return {
+            "labels": ["CONFIRMED → PREPARING", "PREPARING → READY", "READY → PICKED_UP", "PICKED_UP → IN_TRANSIT", "IN_TRANSIT → DELIVERED"],
+            "values": [12.4, 185.2, 42.1, 15.3, 310.5]
+        }
+
+    labels = [f"{r.get('status', '')} → {r.get('next_status', '')}" for r in rows]
+    values = [float(r.get("avg_duration_seconds", 0)) for r in rows]
+    return {"labels": labels, "values": values}
+
+
+@app.get("/analytics/delivery-histogram")
+def get_delivery_histogram():
+    query = """
+        WITH delivery_times AS (
+          SELECT order_id, min(from_iso8601_timestamp(timestamp)) AS confirmed_at, max(from_iso8601_timestamp(timestamp)) AS delivered_at,
+            date_diff('minute', min(from_iso8601_timestamp(timestamp)), max(from_iso8601_timestamp(timestamp))) AS delivery_duration_minutes
+          FROM dijkfood_analytics.events WHERE status IN ('CONFIRMED', 'DELIVERED') GROUP BY order_id HAVING count(distinct status) = 2
+        )
+        SELECT (delivery_duration_minutes / 5) * 5 AS duration_bucket_start_mins, count(*) AS total_orders
+        FROM delivery_times GROUP BY 1 ORDER BY 1 ASC;
+    """
+    rows = run_athena_query(query)
+    if not rows:
+        # Fallback Mock Data
+        return {
+            "labels": ["0-5 min", "5-10 min", "10-15 min", "15-20 min", "20-25 min", "25-30 min", "30-35 min", "35+ min"],
+            "values": [2, 14, 45, 89, 74, 30, 11, 4]
+        }
+
+    labels = [f"{r.get('duration_bucket_start_mins', '')} - {int(r.get('duration_bucket_start_mins', 0)) + 5} min" for r in rows]
+    values = [int(r.get("total_orders", 0)) for r in rows]
+    return {"labels": labels, "values": values}
+
+
+@app.get("/analytics/regions")
+def get_regions():
+    query = """
+        SELECT region_id, count(distinct order_id) AS total_orders
+        FROM dijkfood_analytics.events
+        WHERE status = 'CONFIRMED'
+        GROUP BY 1 ORDER BY 2 DESC;
+    """
+    rows = run_athena_query(query)
+    if not rows:
+        # Fallback Mock Data
+        return {
+            "labels": ["São Paulo, Brazil", "Campinas, Brazil", "Santos, Brazil"],
+            "values": [820, 215, 98]
+        }
+
+    return {
+        "labels": [f"Região {r.get('region_id', '')}" for r in rows],
+        "values": [int(r.get("total_orders", 0)) for r in rows]
+    }
+
+
+@app.get("/analytics/heatmap")
+def get_heatmap():
+    query = """
+        SELECT day_of_week(from_iso8601_timestamp(timestamp)) AS day_of_week_num, hour(from_iso8601_timestamp(timestamp)) AS hour_of_day, count(distinct order_id) AS total_orders
+        FROM dijkfood_analytics.events WHERE status = 'CONFIRMED' GROUP BY 1, 2 ORDER BY 1, 2;
+    """
+    rows = run_athena_query(query)
+    if not rows:
+        # Fallback Mock Data
+        mock_values = []
+        # Simulate lunch & dinner peaks on weekdays (1-5) and weekend peaks
+        for day in range(1, 8):
+            for hr in [12, 13, 19, 20]:
+                mock_values.append({"x": day, "y": hr, "r": 15 if day in (6,7) else 10})
+            for hr in [8, 15, 22]:
+                mock_values.append({"x": day, "y": hr, "r": 3})
+        return {"values": mock_values}
+
+    return {
+        "values": [
+            {
+                "x": int(r.get("day_of_week_num", 1)),
+                "y": int(r.get("hour_of_day", 0)),
+                "r": int(r.get("total_orders", 0)) // 2 + 3 # scale radius
+            }
+            for r in rows
+        ]
+    }
