@@ -1,7 +1,7 @@
 import logging
 import time
 from src.consumer import receive_batch, delete_batch, deduplicate
-from src.database.repository import upsert_positions
+from src.database.repository import upsert_positions, create_table_if_not_exists
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -9,6 +9,13 @@ logger = logging.getLogger(__name__)
 
 def main():
     logger.info("positions consumer iniciado")
+    
+    # Initialize DynamoDB table if it doesn't exist
+    try:
+        create_table_if_not_exists()
+    except Exception as e:
+        logger.error(f"Erro ao inicializar tabela DynamoDB: {e}")
+        
     while True:
         try:
             messages = receive_batch()

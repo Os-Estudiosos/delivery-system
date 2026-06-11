@@ -85,3 +85,22 @@ def update_kitchen(kitchen_id: int, kitchen: KitchenCreate, session: Session = D
         id=db_kitchen.id,
         type=db_kitchen.type,
     )
+
+
+@router.delete('/{kitchen_id}', status_code=status.HTTP_204_NO_CONTENT, tags=['delete kitchen'])
+def delete_kitchen(kitchen_id: int, session: Session = Depends(get_session)):
+    db_kitchen = session.query(KitchenType).filter(KitchenType.id == kitchen_id).first()
+    if not db_kitchen:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail='Kitchen not found.',
+        )
+    session.delete(db_kitchen)
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail='Kitchen type has associated restaurants and cannot be deleted.',
+        )

@@ -151,3 +151,12 @@ CREATE INDEX IF NOT EXISTS idx_order_item_order        ON order_item(order_id);
 CREATE INDEX IF NOT EXISTS idx_delivery_courier        ON delivery(courier_id);
 CREATE INDEX IF NOT EXISTS idx_event_delivery          ON event(delivery_id);
 CREATE INDEX IF NOT EXISTS idx_event_status            ON event(status);
+
+-- -----------------------------------------------------------------
+-- Seed: default region (São Paulo)
+-- ON CONFLICT ensures this is idempotent (safe to run multiple times).
+-- The id is NOT specified so the SERIAL sequence advances naturally.
+-- -----------------------------------------------------------------
+INSERT INTO region (name)
+VALUES ('São Paulo, Brazil')
+ON CONFLICT (name) DO NOTHING;

@@ -308,6 +308,10 @@ async def main(url: str):
     await run_load_test(rps=200, duration=10, seed_ids=seed_ids, debug_first=True) 
 
 if __name__ == "__main__":
-    # Fallback se rodar o simulador solto
-    ctx = json.loads(Path("deploy_context.json").read_text())
-    asyncio.run(main(f"http://{ctx['alb_dns']}"))
+    import sys
+    if len(sys.argv) > 1:
+        url = sys.argv[1]
+    else:
+        ctx = json.loads(Path("deploy_context.json").read_text())
+        url = f"http://{ctx['alb_dns']}"
+    asyncio.run(main(url))

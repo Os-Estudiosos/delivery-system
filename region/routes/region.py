@@ -34,7 +34,7 @@ def get_region(region_id: int, session: Session = Depends(get_session)):
     return RegionResponse(id=region.id, name=region.name)
 
 
-@router.post('/', tags=['create region'])
+@router.post('/', tags=['create region'], status_code=status.HTTP_201_CREATED)
 def create_region(region: RegionCreate, session: Session = Depends(get_session)):
     db_region = Region(
         name=region.name,
@@ -85,3 +85,15 @@ def update_region(region_id: int, region: RegionCreate, session: Session = Depen
         id=db_region.id,
         name=db_region.name,
     )
+
+
+@router.delete('/{region_id}', status_code=status.HTTP_204_NO_CONTENT, tags=['delete region'])
+def delete_region(region_id: int, session: Session = Depends(get_session)):
+    db_region = session.query(Region).filter(Region.id == region_id).first()
+    if not db_region:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail='region not found.',
+        )
+    session.delete(db_region)
+    session.commit()

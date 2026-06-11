@@ -4,8 +4,8 @@ metadata:
   name: app-config
   namespace: admin-namespace
 data:
-  DB_HOST: "host.docker.internal"
+  DB_HOST: "172.18.0.2"
   DB_PORT: "5432"
   DB_NAME: "dijkfood"
   AWS_DEFAULT_REGION: "us-east-1"
-  AWS_ENDPOINT: "http://host.docker.internal:4566"
+  AWS_ENDPOINT: "http://172.18.0.3:4566"

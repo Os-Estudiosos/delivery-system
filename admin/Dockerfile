@@ -7,10 +7,23 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-COPY pyproject.toml README.md ./
+# Install git or clean dependencies if needed
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy shared library first
+COPY shared/ ./shared/
+RUN pip install ./shared
+
+# Copy admin configuration files
+COPY admin/pyproject.toml admin/README.md ./
 RUN python -m pip install --upgrade pip setuptools wheel \
     && pip install .
 
-COPY . .
+# Copy admin source files
+COPY admin/ .
+
+# Copy Kubernetes city manifests so they can be templated and deployed
+COPY infra/k8s/city/ ./infra/k8s/city/
 
 CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT}"]
