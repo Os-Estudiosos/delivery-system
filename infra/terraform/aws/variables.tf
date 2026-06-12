@@ -51,7 +51,7 @@ variable "ecr_repo_prefix" {
 
 variable "ecr_repositories" {
   type    = list(string)
-  default = ["admin", "clients", "couriers", "matching", "orders", "restaurants", "positions", "simulator"]
+  default = ["admin", "clients", "couriers", "matching", "orders", "restaurants", "positions", "simulator", "region"]
 }
 
 variable "ecr_force_delete" {

@@ -6,11 +6,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import desc
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 import boto3
 from boto3.dynamodb.conditions import Key
 
-from shared.database.connection import get_session
+from shared.database.connection import get_session, SessionLocal
 from shared.database.models import (
     Courier,
     Delivery,
@@ -279,7 +279,7 @@ def _call_matching_service(restaurant_id: int, region_id: int) -> int | None:
         method="POST"
     )
     try:
-        with urllib.request.urlopen(req, timeout=5) as response:
+        with urllib.request.urlopen(req, timeout=10) as response:
             if response.status == 200:
                 resp_data = json.loads(response.read().decode("utf-8"))
                 return resp_data.get("courier_id")
@@ -290,7 +290,17 @@ def _call_matching_service(restaurant_id: int, region_id: int) -> int | None:
 
 @router.get('/', response_model=list[OrderResponse])
 def get_orders(session: Session = Depends(get_session)):
-    orders = session.query(Order).all()
+    orders = (
+        session.query(Order)
+        .options(
+            joinedload(Order.restaurant),
+            joinedload(Order.user),
+            joinedload(Order.items).joinedload(OrderItem.item),
+            joinedload(Order.delivery).joinedload(Delivery.events),
+            joinedload(Order.delivery).joinedload(Delivery.courier),
+        )
+        .all()
+    )
     return [_to_order_response(order) for order in orders]
 
 
@@ -329,29 +339,45 @@ def create_order(order: OrderCreate, session: Session = Depends(get_session)):
 
     session.refresh(db_order)
 
-    # Call matching service to find courier
-    best_courier_id = _call_matching_service(db_restaurant.id, db_restaurant.region_id)
-    if best_courier_id:
-        try:
-            db_delivery = Delivery(order_id=db_order.id, courier_id=best_courier_id)
-            session.add(db_delivery)
-            session.flush()
+    order_id = db_order.id
+    restaurant_id = db_restaurant.id
+    region_id = db_restaurant.region_id
+
+    # Close session early to release connection back to pool before making HTTP calls
+    session.close()
+
+    # Call matching service without holding the connection
+    best_courier_id = _call_matching_service(restaurant_id, region_id)
+
+    # Use a fresh session to update order/delivery status
+    new_session = SessionLocal()
+    try:
+        if best_courier_id:
+            db_delivery = Delivery(order_id=order_id, courier_id=best_courier_id)
+            new_session.add(db_delivery)
+            new_session.flush()
 
             db_event = Event(status=OrderStatus.CONFIRMED, delivery_id=db_delivery.id)
-            session.add(db_event)
-            session.commit()
-            session.refresh(db_order)
+            new_session.add(db_event)
+            new_session.commit()
+            
             _publish_analytics_event(
-                order_id=db_order.id,
+                order_id=order_id,
                 status=OrderStatus.CONFIRMED.value,
-                restaurant_id=db_restaurant.id,
-                region_id=db_restaurant.region_id
+                restaurant_id=restaurant_id,
+                region_id=region_id
             )
-        except Exception as e:
-            print(f"Failed to assign delivery on order create: {e}")
-            session.rollback()
-
-    return _to_order_response(db_order)
+        
+        # Load the updated order to construct response
+        db_order_refetched = new_session.query(Order).filter(Order.id == order_id).first()
+        return _to_order_response(db_order_refetched)
+    except Exception as e:
+        print(f"Failed to assign delivery on order create: {e}")
+        new_session.rollback()
+        db_order_refetched = new_session.query(Order).filter(Order.id == order_id).first()
+        return _to_order_response(db_order_refetched)
+    finally:
+        new_session.close()
 
 
 @router.patch('/{order_id}', response_model=OrderResponse)

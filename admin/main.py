@@ -58,8 +58,12 @@ def run_athena_query(query_str: str) -> list[dict]:
     try:
         athena_client = boto3.client("athena", region_name=AWS_REGION)
         # We need a configured S3 bucket to output Athena query results
-        # We use a default datalake bucket pattern
-        s3_output = f"s3://dijkfood-datalake-results/"
+        # We use the datalake bucket name from the environment variable if available
+        datalake_bucket = os.environ.get("DATALAKE_BUCKET")
+        if datalake_bucket:
+            s3_output = f"s3://{datalake_bucket}/athena-results/"
+        else:
+            s3_output = f"s3://dijkfood-datalake-results/"
 
         response = athena_client.start_query_execution(
             QueryString=query_str,
@@ -265,9 +269,18 @@ def create_city(city: CityCreate, session: Session = Depends(get_session)):
             "DB_PORT": os.environ.get("DB_PORT", "5432"),
             "DB_NAME": os.environ.get("DB_NAME", "dijkfood"),
             "AWS_DEFAULT_REGION": os.environ.get("AWS_DEFAULT_REGION", "us-east-1"),
-            "AWS_ENDPOINT": os.environ.get("AWS_ENDPOINT", "http://host.docker.internal:4566"),
+            "AWS_ENDPOINT": os.environ.get("AWS_ENDPOINT", ""),
+            "ENV": os.environ.get("ENV", "production"),
             "REGION_ID": str(db_region.id),
             "CITY_NAME": city.name,
+            # Limit pool size per replica to avoid saturating RDS db.t3.micro
+            # (max ~85 connections). With 3 replicas × 3 services × (5+5) = 90 max.
+            "DB_POOL_SIZE": os.environ.get("DB_POOL_SIZE", "4"),
+            "DB_MAX_OVERFLOW": os.environ.get("DB_MAX_OVERFLOW", "2"),
+            "DB_POOL_TIMEOUT": os.environ.get("DB_POOL_TIMEOUT", "30"),
+            # S3 bucket for OSMnx graph cache — without this, matching re-downloads
+            # the graph from OpenStreetMap on every pod restart (1-2 min cold start).
+            "S3_BUCKET": os.environ.get("S3_BUCKET", ""),
         }
         
         cm = client.V1ConfigMap(
@@ -284,15 +297,20 @@ def create_city(city: CityCreate, session: Session = Depends(get_session)):
             else:
                 raise
 
-        # Create Secret 'app-secret' in the new namespace
+        sec_string_data = {
+            "DB_USER": os.environ.get("DB_USER", "postgres"),
+            "DB_PASSWORD": os.environ.get("DB_PASSWORD", "postgres"),
+        }
+        for k in ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"]:
+            v = os.environ.get(k)
+            if v is not None:
+                sec_string_data[k] = v
+
         sec = client.V1Secret(
             api_version="v1",
             kind="Secret",
             metadata=client.V1ObjectMeta(name="app-secret", namespace=namespace_name),
-            string_data={
-                "DB_USER": os.environ.get("DB_USER", "postgres"),
-                "DB_PASSWORD": os.environ.get("DB_PASSWORD", "postgres"),
-            }
+            string_data=sec_string_data
         )
         try:
             v1.create_namespaced_secret(namespace=namespace_name, body=sec)
@@ -331,6 +349,11 @@ def create_city(city: CityCreate, session: Session = Depends(get_session)):
             # Replace placeholder namespace with actual dynamic namespace
             content = content.replace("namespace: city-example-namespace", f"namespace: {namespace_name}")
             content = content.replace("city-example-namespace.local", f"{namespace_name}.local")
+            
+            # Replace local images with ECR URI if ECR_REGISTRY env var is set
+            ecr_registry = os.environ.get("ECR_REGISTRY", "")
+            if ecr_registry:
+                content = content.replace("image: delivery-system/", f"image: {ecr_registry}/delivery-system/")
             
             # Apply resources
             dicts = list(yaml.safe_load_all(content))

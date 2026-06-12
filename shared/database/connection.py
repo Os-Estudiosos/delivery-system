@@ -32,7 +32,10 @@ _DB_URL = "postgresql+psycopg2://{user}:{password}@{host}:{port}/{name}".format(
     name     = os.environ.get("DB_NAME",     "dijkfood"),
 )
 
-engine       = create_engine(_DB_URL, echo=False, pool_size=100, max_overflow=200)
+pool_size    = int(os.environ.get("DB_POOL_SIZE",    "4"))
+max_overflow = int(os.environ.get("DB_MAX_OVERFLOW", "2"))
+pool_timeout = int(os.environ.get("DB_POOL_TIMEOUT", "30"))
+engine       = create_engine(_DB_URL, echo=False, pool_size=pool_size, max_overflow=max_overflow, pool_timeout=pool_timeout)
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
 

@@ -42,3 +42,7 @@ resource "aws_db_instance" "dijkfood" {
 
   tags = var.common_tags
 }
+
+output "rds_address" {
+  value = aws_db_instance.dijkfood.address
+}

@@ -11,8 +11,17 @@ from pathlib import Path
 
 # Armazena as latências para calcular o P95 no final
 BASE_URL = ""
+CITY_NAMESPACE = ""  # Namespace K8s da cidade ativa (ex: city-2-russas-cear-brazil)
 latencies = []
+# STATUS_FLOW: estados que o simulador avança via PATCH /delivery/{id}/status.
 STATUS_FLOW = ["CONFIRMED", "PREPARING", "READY_FOR_PICKUP", "PICKED_UP", "IN_TRANSIT", "DELIVERED"]
+
+background_tasks = set()
+
+# Coordenadas de fallback: Russas, Ceará, Brazil (cidade padrão de deploy)
+# Em produção, as coords são geocodificadas dinamicamente a partir do nome da região.
+_FALLBACK_LAT = -4.9416
+_FALLBACK_LON = -37.9725
 
 class LocalResolver(aiohttp.abc.AbstractResolver):
     async def resolve(self, host, port=0, family=socket.AF_INET):
@@ -76,30 +85,37 @@ class LocalResolver(aiohttp.abc.AbstractResolver):
     async def close(self):
         pass
 
-def get_url_for_path(url: str) -> str:
-    """Resolve a URL para o microsserviço correspondente em ambientes locais ou k8s multi-subdomínio."""
+def _get_service_for_path(path: str) -> str:
+    """Determina o microsserviço responsável com base no path da requisição."""
+    p = path.strip("/")
+    if p.startswith("kitchen") or p.startswith("restaurant") or p.startswith("item"):
+        return "restaurants"
+    elif p.startswith("user") or p.startswith("client"):
+        return "clients"
+    elif p.startswith("courier"):
+        return "couriers"
+    elif p.startswith("order") or p.startswith("delivery"):
+        return "orders"
+    elif p.startswith("region"):
+        return "region"
+    return "orders"
+
+
+def get_url_and_host(url: str) -> tuple[str, str | None]:
+    """Resolve a URL real e o header Host virtual para o microsserviço.
+    Retorna (url_destino, host_header).
+    - host_header=None significa usar o Host padrão (sem override).
+    - Para AWS ALB com Ingress host-based, retorna o host virtual do serviço.
+    """
     parsed = urllib.parse.urlparse(url)
     path = parsed.path
     if parsed.query:
         path += "?" + parsed.query
-        
-    p = path.strip("/")
-    if p.startswith("kitchen") or p.startswith("restaurant") or p.startswith("item"):
-        service = "restaurants"
-    elif p.startswith("user") or p.startswith("client"):
-        service = "clients"
-    elif p.startswith("courier"):
-        service = "couriers"
-    elif p.startswith("order") or p.startswith("delivery"):
-        service = "orders"
-    elif p.startswith("region"):
-        service = "region"
-    else:
-        service = "orders"
 
+    service = _get_service_for_path(path)
     hostname = parsed.hostname or "localhost"
     port = parsed.port
-    
+
     # 1. Caso com porta no localhost (Docker Compose ou NodePorts do Kind)
     if port and (hostname == "localhost" or hostname == "127.0.0.1"):
         port_str = str(port)
@@ -117,47 +133,69 @@ def get_url_for_path(url: str) -> str:
             "restaurants": "30045",
             "region": "30046"
         }
-        
         if port_str.startswith("400"):
             new_port = compose_ports.get(service, "4004")
         elif port_str.startswith("3004"):
             new_port = node_ports.get(service, "30044")
         else:
             new_port = port_str
-            
-        return f"{parsed.scheme}://{hostname}:{new_port}{path}"
+        return f"{parsed.scheme}://{hostname}:{new_port}{path}", None
 
     # 2. Caso de Ingress com subdomínio dinâmico no Kubernetes local (ex: http://city-10-campinas.local)
     if hostname.endswith(".local") and not any(hostname.startswith(s + ".") for s in ["clients", "couriers", "orders", "restaurants", "region"]):
         new_hostname = f"{service}.{hostname}"
         port_str = f":{port}" if port else ""
-        return f"{parsed.scheme}://{new_hostname}{port_str}{path}"
-        
+        return f"{parsed.scheme}://{new_hostname}{port_str}{path}", None
+
     for s in ["clients", "couriers", "orders", "restaurants", "region"]:
         if hostname.startswith(s + "."):
             base_domain = hostname[len(s)+1:]
             new_hostname = f"{service}.{base_domain}"
             port_str = f":{port}" if port else ""
-            return f"{parsed.scheme}://{new_hostname}{port_str}{path}"
+            return f"{parsed.scheme}://{new_hostname}{port_str}{path}", None
 
-    # 3. Produção (ALB na AWS) / Ingress Unificado
-    return url
+    # 3. Produção: ALB na AWS com Ingress nginx host-based routing.
+    # O ALB encaminha pelo header Host. Precisamos enviar o Host virtual correto
+    # (ex: orders.city-2-russas-cear-brazil.local) enquanto conectamos ao IP do ALB.
+    if CITY_NAMESPACE:
+        # Serviço do namespace da cidade
+        if service in ("clients", "couriers", "orders", "restaurants", "region"):
+            virtual_host = f"{service}.{CITY_NAMESPACE}.local"
+        else:
+            virtual_host = f"{service}.admin-namespace.local"
+    else:
+        # Fallback: admin namespace
+        if service == "region":
+            virtual_host = f"region.admin-namespace.local"
+        else:
+            virtual_host = f"{service}.admin-namespace.local"
+
+    return url, virtual_host
+
+
+def get_url_for_path(url: str) -> str:
+    """Compatibilidade retroativa — retorna apenas a URL destino."""
+    resolved_url, _ = get_url_and_host(url)
+    return resolved_url
 
 async def fetch(session, method, url, payload=None):
-    """Executa a requisição HTTP, resolve a URL correta e mede a latência exata."""
-    resolved_url = get_url_for_path(url)
+    """Executa a requisição HTTP, resolve a URL correta e mede a latência exata.
+    Quando o Ingress usa host-based routing (AWS ALB), injeta o header Host virtual.
+    """
+    resolved_url, virtual_host = get_url_and_host(url)
+    headers = {"Host": virtual_host} if virtual_host else {}
     start_time = time.perf_counter()
     data = None
     try:
         response = None
         if method == 'POST':
-            response = session.post(resolved_url, json=payload)
+            response = session.post(resolved_url, json=payload, headers=headers)
         elif method == 'PUT':
-            response = session.put(resolved_url, json=payload)
+            response = session.put(resolved_url, json=payload, headers=headers)
         elif method == 'PATCH':
-            response = session.patch(resolved_url, json=payload)
+            response = session.patch(resolved_url, json=payload, headers=headers)
         elif method == 'GET':
-            response = session.get(resolved_url)
+            response = session.get(resolved_url, headers=headers)
 
         if response is None:
             raise ValueError(f"Unsupported method: {method}")
@@ -172,8 +210,8 @@ async def fetch(session, method, url, payload=None):
                 except json.JSONDecodeError:
                     data = None
     except Exception as e:
-        print(f"\n[ERRO DE CONEXÃO REAL] Falha ao tentar {method} em {resolved_url} -> {str(e)}")
-        status = 0 
+        print(f"\n[ERRO DE CONEXÃO REAL] Falha ao tentar {method} em {resolved_url} (Host: {virtual_host}) -> {str(e)}")
+        status = 0
         data = None
 
     end_time = time.perf_counter()
@@ -181,30 +219,145 @@ async def fetch(session, method, url, payload=None):
     latencies.append(latency_ms)
     return status, data
 
+async def _discover_region(session) -> tuple[int, str]:
+    """Descobre o region_id e o nome da cidade ativa consultando a API.
+    Aguarda até a região existir (o admin-service pode demorar para criar via K8s).
+    Retorna (region_id, city_name).
+    """
+    for attempt in range(20):
+        status_code, regions = await fetch(session, 'GET', f"{BASE_URL}/region/")
+        if status_code in (200, 201) and isinstance(regions, list) and regions:
+            first = regions[0]
+            region_id = first.get("id", 1)
+            city_name = first.get("name", "")
+            print(f"[Seed] Região encontrada: id={region_id}, name='{city_name}'")
+            return region_id, city_name
+        print(f"[Seed] Aguardando região disponível... (tentativa {attempt + 1}/20)")
+        await asyncio.sleep(3)
+    print("[Seed] AVISO: nenhuma região encontrada após 20 tentativas. Usando fallback Russas/CE.")
+    return 1, "Russas, Ceará, Brazil"
+
+
+async def _geocode_city_center(city_name: str) -> tuple[float, float]:
+    """Geocodifica o nome da cidade usando a API pública do Nominatim (OpenStreetMap).
+    Retorna (lat, lon) do centroide da cidade.
+    Fallback para Russas/CE se o Nominatim não responder ou não encontrar.
+    """
+    if not city_name:
+        return _FALLBACK_LAT, _FALLBACK_LON
+
+    try:
+        encoded = urllib.parse.quote(city_name)
+        url = f"https://nominatim.openstreetmap.org/search?q={encoded}&format=json&limit=1"
+        timeout = aiohttp.ClientTimeout(total=10)
+        async with aiohttp.ClientSession(timeout=timeout) as geo_session:
+            async with geo_session.get(url, headers={"User-Agent": "DijkFood-Simulator/1.0"}) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    if data:
+                        lat = float(data[0]["lat"])
+                        lon = float(data[0]["lon"])
+                        print(f"[Seed] Geocodificação OK: '{city_name}' → lat={lat:.4f}, lon={lon:.4f}")
+                        return lat, lon
+                    else:
+                        print(f"[Seed] Nominatim não retornou resultados para '{city_name}'. Usando fallback.")
+    except Exception as e:
+        print(f"[Seed] Falha na geocodificação de '{city_name}': {e}. Usando fallback.")
+
+    return _FALLBACK_LAT, _FALLBACK_LON
+
+
 async def seed_data(session):
     """Fase 1: Popula o RDS com dados iniciais antes do teste."""
+    global CITY_NAMESPACE
     print("Semeando dados iniciais...")
-    
-    # 1. Cozinha e Restaurante
+
+    # 0. Descobre o namespace da cidade para host-based routing no ALB.
+    # Prioridade: deploy_context.json (gerado pelo deploy.py) > kubectl subprocess > fallback.
+    if not CITY_NAMESPACE:
+        try:
+            ctx = json.loads(Path("deploy_context.json").read_text())
+            ns = ctx.get("city_namespace", "")
+            if ns.startswith("city-"):
+                CITY_NAMESPACE = ns
+                print(f"[Seed] Namespace lido do deploy_context.json: {CITY_NAMESPACE}")
+        except Exception as e:
+            print(f"[Seed] Não foi possível ler deploy_context.json: {e}")
+
+    if not CITY_NAMESPACE:
+        # Fallback: tenta via kubectl subprocess
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["kubectl", "get", "ingress", "-A", "-o",
+                 "jsonpath={range .items[*]}{.metadata.namespace}{'\\n'}{end}"],
+                capture_output=True, text=True, timeout=10
+            )
+            namespaces = [ns.strip() for ns in result.stdout.splitlines() if ns.strip().startswith("city-")]
+            if namespaces:
+                CITY_NAMESPACE = namespaces[0]
+                print(f"[Seed] Namespace detectado via kubectl: {CITY_NAMESPACE}")
+        except Exception as e:
+            print(f"[Seed] kubectl também falhou: {e}")
+
+    if not CITY_NAMESPACE:
+        print("[Seed] AVISO: namespace não detectado. Header Host usará admin-namespace como fallback.")
+    else:
+        print(f"[Seed] Usando namespace '{CITY_NAMESPACE}' para host-based routing.")
+
+    # 1. Descobre region_id e nome da cidade ativos na API
+    region_id, city_name = await _discover_region(session)
+
+    # 1. Geocodifica o centro geográfico da cidade (via Nominatim / OSM)
+    #    Isso garante que restaurante, usuário e entregadores estejam DENTRO
+    #    do grafo viário daquela cidade, independente de qual cidade for registrada.
+    city_lat, city_lon = await _geocode_city_center(city_name)
+
+    # 2. Cozinha e Restaurante — posicionado no centro da cidade ativa
     kitchen_status, kitchen_data = await fetch(session, 'POST', f"{BASE_URL}/kitchen/", {"type": "Italiana"})
     kitchen_id = kitchen_data.get("id", 1) if kitchen_status in (200, 201) and kitchen_data else 1
 
     restaurant_status, restaurant_data = await fetch(session, 'POST', f"{BASE_URL}/restaurant/", {
-        "name": "Dijkstra Pasta", "lat": -23.5505, "lon": -46.6333, "kitchen_type_id": kitchen_id
+        "name": "Dijkstra Pasta",
+        "lat": city_lat,
+        "lon": city_lon,
+        "kitchen_type_id": kitchen_id,
     })
     restaurant_id = restaurant_data.get("id", 1) if restaurant_status in (200, 201) and restaurant_data else 1
-    
-    # 2. Item
+
+    # 3. Item
     item_status, item_data = await fetch(session, 'POST', f"{BASE_URL}/item/", {
         "name": "Spaghetti O(V+E)", "price": 45.50, "restaurant_id": restaurant_id
     })
     item_id = item_data.get("id", 1) if item_status in (200, 201) and item_data else 1
-    
-    # 3. Usuário e Entregador
+
+    # 4. Usuário — casa a ~500m do restaurante
     user_status, user_data = await fetch(session, 'POST', f"{BASE_URL}/user", {
-        "name": "Cliente Teste", "email": "cliente@fgv.br", "house_lat": -23.5510, "house_lon": -46.6340, "phones": ["11999999999"]
+        "name": "Cliente Teste",
+        "email": "cliente@dijkfood.br",
+        "house_lat": city_lat + 0.005,
+        "house_lon": city_lon + 0.005,
+        "phones": ["88999999999"],
     })
     user_id = user_data.get("id", 1) if user_status in (200, 201) and user_data else 1
+
+    # 5. Pré-cria pool de entregadores espalhados pela cidade ativa
+    #    Requisito: proporção 3 entregadores : 1 cliente. 60 garante cobertura até 50 RPS.
+    #    Raio de ±0.015° ≈ ±1,5 km — entregadores distribuídos dentro da cidade.
+    NUM_COURIERS = 60
+    print(f"[Seed] Criando {NUM_COURIERS} entregadores em '{city_name}' (region_id={region_id})...")
+    courier_ids = []
+    for i in range(NUM_COURIERS):
+        c_status, c_data = await fetch(session, 'POST', f"{BASE_URL}/courier/", {
+            "name": f"Entregador-Seed-{i+1}",
+            "vehicle": "MOTORCYCLE",
+            "lat": city_lat + random.uniform(-0.015, 0.015),
+            "lon": city_lon + random.uniform(-0.015, 0.015),
+            "region_id": region_id,
+        })
+        if c_status in (200, 201) and c_data:
+            courier_ids.append(c_data.get("id"))
+    print(f"[Seed] {len(courier_ids)} entregadores criados com sucesso.")
 
     print("Seed concluído.")
 
@@ -213,18 +366,25 @@ async def seed_data(session):
         "restaurant_id": restaurant_id,
         "item_id": item_id,
         "user_id": user_id,
+        "region_id": region_id,
+        "city_lat": city_lat,
+        "city_lon": city_lon,
+        "city_name": city_name,
     }
 
-async def simulate_courier_movement(session, courier_id, delivery_id):
-    """Simula o entregador enviando posição a cada 100ms para o DynamoDB."""
-    for _ in range(10): # Envia 10 atualizações rápidas por pedido
+async def simulate_courier_movement(session, courier_id, delivery_id, city_lat: float, city_lon: float):
+    """Simula o entregador enviando posição GPS a cada 100ms para o DynamoDB.
+    As coordenadas são geradas em torno do centro da cidade ativa (geocodificado no seed).
+    Raio de ±0.010° ≈ ±1 km, representando movimento real de entrega.
+    """
+    for _ in range(10):  # Envia 10 atualizações rápidas por pedido (100ms cada)
         payload = {
             "delivery_id": str(delivery_id),
-            "lat_courier": -23.5505 + (random.uniform(-0.001, 0.001)),
-            "lon_courier": -46.6333 + (random.uniform(-0.001, 0.001))
+            "lat_courier": city_lat + random.uniform(-0.010, 0.010),
+            "lon_courier": city_lon + random.uniform(-0.010, 0.010),
         }
         await fetch(session, 'PUT', f"{BASE_URL}/courier/{courier_id}/position", payload)
-        await asyncio.sleep(0.1) # Requisito: 100ms
+        await asyncio.sleep(0.1)  # Requisito: 100ms
 
 
 async def _find_delivery_by_order_id(session, order_id: int):
@@ -261,8 +421,9 @@ def _remaining_statuses(current_status: str | None) -> list[str]:
 
 async def simulate_order_lifecycle(session, seed_ids, debug=False):
     """Fase 2: Simula o ciclo de vida completo de um pedido no RDS."""
+    region_id = seed_ids.get("region_id", 1)
     try:
-        # 1. Cria Pedido
+        # 1. Cria Pedido — o matching-service já encontra o melhor entregador via Dijkstra
         order_payload = {
             "restaurant_id": seed_ids["restaurant_id"],
             "user_id": seed_ids["user_id"],
@@ -288,13 +449,17 @@ async def simulate_order_lifecycle(session, seed_ids, debug=False):
         selected_courier = current_order.get("courier") or {}
         selected_courier_id = selected_courier.get("id")
 
-        # Tenta criar courier apenas quando o pedido ainda não tem courier associado.
+        # Se o matching-service não encontrou entregador (pool esgotado), cria um novo
+        # com coordenadas da cidade ativa e region_id correto.
         if selected_courier_id is None:
+            c_lat = seed_ids.get("city_lat", _FALLBACK_LAT)
+            c_lon = seed_ids.get("city_lon", _FALLBACK_LON)
             courier_payload = {
                 "name": f"Entregador-{time.perf_counter_ns()}",
                 "vehicle": "MOTORCYCLE",
-                "lat": -23.5500 + random.uniform(-0.002, 0.002),
-                "lon": -46.6330 + random.uniform(-0.002, 0.002),
+                "lat": c_lat + random.uniform(-0.010, 0.010),
+                "lon": c_lon + random.uniform(-0.010, 0.010),
+                "region_id": region_id,
             }
             courier_status, courier_data = await fetch(session, 'POST', f"{BASE_URL}/courier/", courier_payload)
             if courier_status in (200, 201) and courier_data:
@@ -340,7 +505,11 @@ async def simulate_order_lifecycle(session, seed_ids, debug=False):
             return False
 
         # 3. Dispara o movimento do entregador no DynamoDB em background (não bloqueia o RDS)
-        asyncio.create_task(simulate_courier_movement(session, selected_courier_id, delivery_id))
+        c_lat = seed_ids.get("city_lat", _FALLBACK_LAT)
+        c_lon = seed_ids.get("city_lon", _FALLBACK_LON)
+        task = asyncio.create_task(simulate_courier_movement(session, selected_courier_id, delivery_id, c_lat, c_lon))
+        background_tasks.add(task)
+        task.add_done_callback(background_tasks.discard)
 
         # 4. Avança status no RDS
         statuses = _remaining_statuses(current_status)
@@ -396,6 +565,10 @@ async def run_load_test(rps, duration, seed_ids, debug_first=False):
             await asyncio.sleep(1) # Aguarda 1 segundo e injeta mais carga
             
         await queue.join()
+        
+        if background_tasks:
+            await asyncio.gather(*background_tasks, return_exceptions=True)
+            
         elapsed_seconds = max(time.time() - start_time, 1e-9)
         
         for w in workers:
@@ -418,7 +591,7 @@ async def run_load_test(rps, duration, seed_ids, debug_first=False):
                 print("AVISO: P95 acima de 500ms. ECS pode estar precisando de mais containers.")
 
 async def main(url: str):
-    global BASE_URL
+    global BASE_URL, CITY_NAMESPACE
     BASE_URL = url
     
     print("--- DijkFood Load Simulator ---")
@@ -437,7 +610,7 @@ async def main(url: str):
     print("\nAguardando 5s antes do teste de estresse máximo...")
     await asyncio.sleep(5)
     # Comentado pois não funcionou bem no ambiente de teste, mas pode ser reativado para testes locais ou em ambiente com mais recursos.
-    await run_load_test(rps=200, duration=10, seed_ids=seed_ids, debug_first=True) 
+    await run_load_test(rps=50, duration=30, seed_ids=seed_ids, debug_first=True) 
 
 if __name__ == "__main__":
     import sys

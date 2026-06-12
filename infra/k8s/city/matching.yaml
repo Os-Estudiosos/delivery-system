@@ -18,7 +18,7 @@ spec:
       containers:
         - name: matching
           image: delivery-system/matching:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           envFrom:
             - configMapRef:
                 name: app-config
@@ -37,12 +37,16 @@ spec:
             httpGet:
               path: /health
               port: 4003
-            initialDelaySeconds: 5
-            periodSeconds: 10
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 5
           readinessProbe:
             httpGet:
               path: /ready
               port: 4003
-            initialDelaySeconds: 2
-            periodSeconds: 5
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 5
 ---

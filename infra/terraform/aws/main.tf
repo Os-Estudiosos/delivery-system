@@ -76,3 +76,29 @@ module "iot" {
 
   common_tags          = local.common_tags
 }
+
+data "aws_caller_identity" "current" {}
+
+output "account_id" {
+  value = data.aws_caller_identity.current.account_id
+}
+
+output "aws_region" {
+  value = var.aws_region
+}
+
+output "eks_cluster_name" {
+  value = var.eks_cluster_name
+}
+
+output "rds_address" {
+  value = module.rds.rds_address
+}
+
+output "assets_bucket_name" {
+  value = module.s3.assets_bucket_name
+}
+
+output "datalake_bucket_name" {
+  value = module.s3.datalake_bucket_name
+}

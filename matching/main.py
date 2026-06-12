@@ -8,8 +8,9 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from sqlalchemy import exists
 from shared.database.connection import get_session
-from shared.database.models import Courier, Delivery, OrderStatus, Restaurant
+from shared.database.models import Courier, Delivery, OrderStatus, Restaurant, Event
 from shared.database.create_graph import load_graph_cache, save_graph_cache, download_graph
 
 app = FastAPI(title="matching-service")
@@ -111,18 +112,6 @@ class MatchRequest(BaseModel):
     restaurant_id: int
     region_id: int
 
-def _get_latest_delivery_status(delivery: Delivery) -> OrderStatus | None:
-    if not delivery.events:
-        return None
-    latest_event = max(delivery.events, key=lambda event: (event.updated_at, event.id))
-    return latest_event.status
-
-def _is_courier_available(courier: Courier) -> bool:
-    return all(
-        _get_latest_delivery_status(delivery) == OrderStatus.DELIVERED
-        for delivery in courier.deliveries
-    )
-
 @app.post("/match")
 def match_courier(req: MatchRequest, session: Session = Depends(get_session)):
     global graph
@@ -133,7 +122,21 @@ def match_courier(req: MatchRequest, session: Session = Depends(get_session)):
     if not restaurant:
         raise HTTPException(status_code=404, detail="Restaurant not found")
 
-    couriers = session.query(Courier).filter(Courier.region_id == req.region_id).all()
+    # An active delivery is a delivery that does NOT have any event with status 'DELIVERED'
+    active_delivery_exists = exists().where(
+        (Delivery.courier_id == Courier.id) & 
+        ~exists().where(
+            (Event.delivery_id == Delivery.id) & (Event.status == OrderStatus.DELIVERED)
+        )
+    )
+
+    # Fetch only couriers in the region who do NOT have any active delivery
+    couriers = session.query(Courier).filter(
+        Courier.region_id == req.region_id
+    ).filter(
+        ~active_delivery_exists
+    ).all()
+
     if not couriers:
         return {"courier_id": None}
 
@@ -144,15 +147,19 @@ def match_courier(req: MatchRequest, session: Session = Depends(get_session)):
         print(f"Dijkstra error: {e}")
         return {"courier_id": None}
 
+    try:
+        courier_lons = [c.lon for c in couriers]
+        courier_lats = [c.lat for c in couriers]
+        courier_nodes = ox.distance.nearest_nodes(graph, courier_lons, courier_lats)
+    except Exception as e:
+        print(f"Nearest nodes lookup error: {e}")
+        return {"courier_id": None}
+
     best_courier = None
     best_dist = float("inf")
 
-    for courier in couriers:
-        if not _is_courier_available(courier):
-            continue
-
+    for courier, courier_node in zip(couriers, courier_nodes):
         try:
-            courier_node = ox.distance.nearest_nodes(graph, courier.lon, courier.lat)
             dist = dists.get(courier_node, float("inf"))
             if dist < best_dist:
                 best_dist = dist

@@ -18,7 +18,7 @@ spec:
       containers:
         - name: restaurants
           image: delivery-system/restaurants:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           envFrom:
             - configMapRef:
                 name: app-config

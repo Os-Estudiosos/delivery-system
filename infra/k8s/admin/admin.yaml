@@ -56,7 +56,7 @@ spec:
       containers:
         - name: admin
           image: delivery-system/admin:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           envFrom:
             - configMapRef:
                 name: app-config

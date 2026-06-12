@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from shared.database.connection import get_session
+from shared.database.connection import get_session, SessionLocal
 from shared.database.models import (
     Courier,
     Delivery,
@@ -195,7 +195,7 @@ def _call_matching_service(restaurant_id: int, region_id: int) -> int | None:
         method="POST"
     )
     try:
-        with urllib.request.urlopen(req, timeout=5) as response:
+        with urllib.request.urlopen(req, timeout=10) as response:
             if response.status == 200:
                 resp_data = json.loads(response.read().decode("utf-8"))
                 return resp_data.get("courier_id")
@@ -299,10 +299,47 @@ def update_delivery_status(delivery_id: int, payload: DeliveryStatusCreate, sess
             detail=f'Invalid delivery status transition. Expected {expected_status.value}.',
         )
 
+    best_courier_id = None
     if payload.status == OrderStatus.READY_FOR_PICKUP:
-        best_courier_id = _call_matching_service(db_delivery.order.restaurant_id, db_delivery.order.restaurant.region_id)
-        if best_courier_id:
-            db_delivery.courier_id = best_courier_id
+        # Extract fields needed for matching call
+        restaurant_id = db_delivery.order.restaurant_id
+        region_id = db_delivery.order.restaurant.region_id
+        
+        # Close the connection back to the pool before call
+        session.close()
+        
+        # Call matching service (connection is free)
+        best_courier_id = _call_matching_service(restaurant_id, region_id)
+        
+        # Re-open session
+        new_session = SessionLocal()
+        try:
+            db_delivery = new_session.query(Delivery).filter(Delivery.id == delivery_id).first()
+            if best_courier_id:
+                db_delivery.courier_id = best_courier_id
+            
+            db_event = Event(
+                status=payload.status,
+                updated_at=datetime.datetime.now(datetime.timezone.utc),
+                delivery=db_delivery,
+            )
+            new_session.add(db_event)
+            new_session.commit()
+            new_session.refresh(db_event)
+            
+            # SQS publishing
+            _publish_analytics_event(
+                order_id=db_delivery.order.id,
+                status=payload.status.value,
+                restaurant_id=db_delivery.order.restaurant_id,
+                region_id=db_delivery.order.restaurant.region_id
+            )
+            return _to_delivery_status_response(db_event)
+        except Exception as e:
+            new_session.rollback()
+            raise e
+        finally:
+            new_session.close()
 
     db_event = Event(
         status=payload.status,

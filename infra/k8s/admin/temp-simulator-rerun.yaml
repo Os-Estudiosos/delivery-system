@@ -1,0 +1,25 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: load-simulator
+  namespace: admin-namespace
+spec:
+  template:
+    metadata:
+      labels:
+        app: load-simulator
+        job-name: load-simulator
+    spec:
+      containers:
+        - name: simulator
+          image: 045437334962.dkr.ecr.us-east-1.amazonaws.com/delivery-system/simulator:latest
+          imagePullPolicy: Always
+          args: ["http://orders.city-2-russas-cear-brazil.svc.cluster.local:4004"]
+          env:
+            - name: TARGET_NAMESPACE
+              value: "city-2-russas-cear-brazil"
+          envFrom:
+            - secretRef:
+                name: app-secret
+      restartPolicy: Never
+  backoffLimit: 0
