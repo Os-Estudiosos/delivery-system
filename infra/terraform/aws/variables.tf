@@ -56,7 +56,7 @@ variable "ecr_repositories" {
 
 variable "ecr_force_delete" {
   type    = bool
-  default = false
+  default = true
 }
 
 variable "ecr_scan_on_push" {

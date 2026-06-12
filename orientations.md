@@ -100,3 +100,44 @@ Um script Python capaz de validar os limites do sistema:
 * **Relatório Arquitetural (PDF):** Diagrama completo de infra e fluxo de dados AWS, design pattern escolhido, justificativas das decisões de projeto, integração explicada do Kubernetes e relatórios extraídos das métricas do simulador.
 * **Modelo de Custos:** Estimativa mensal (em USD para `us-east-1`) comparando o baseline de "Operação Normal" contra o burst de "Evento Especial".
 * **Vídeo:** Gravação atestando que a execução do script provisiona a nuvem e que a plataforma suporta os requisitos perfeitamente.
+
+## 8. Arquitetura SUGERIDA PELOS ALUNOS (NÃO OBRIGATÓRIA), aceitam-se outras abordagens
+A DijkFood está implementada em uma arquitetura híbrida escalável multirregional na AWS/EKS:
+
+```mermaid
+graph TD
+    subgraph Global [Namespace: admin-namespace]
+        Admin[admin-service: Dashboard & Dynamic Provisioner]
+        Positions[positions-service: Consome coordenadas do SQS]
+    end
+
+    subgraph City [Namespace Dinâmico: city-2-russas-cear-brazil]
+        Clients[clients-service]
+        Couriers[couriers-service]
+        Restaurants[restaurants-service]
+        Region[region-service]
+        Orders[orders-service: Gestão e SQS Analytics]
+        Matching[matching-service: OSMnx Dijkstra Roteador]
+    end
+
+    subgraph Infra [Recursos Compartilhados AWS]
+        RDS[(PostgreSQL RDS: dijkfood.ctra4ujpjrsz.us-east-1.rds.amazonaws.com)]
+        DDB[(DynamoDB: courier_positions)]
+        SQS_Loc[SQS: courier-locations]
+        SQS_An[SQS: analytics-events]
+        S3[S3: dijkfood-datalake-2d6f56cd]
+        Firehose[Kinesis Firehose → S3]
+        Athena[Athena: dijkfood_analytics.events]
+    end
+
+    Orders -->|HTTP POST /match| Matching
+    Matching -->|SQL exists()| RDS
+    Couriers -->|GPS PUT /position| SQS_Loc
+    Positions -->|Consome SQS| DDB
+    Orders -->|Eventos JSON| SQS_An
+    SQS_An -->|EventBridge Pipe| Firehose
+    Firehose -->|Parquet| S3
+    S3 -->|Crawl| Athena
+```
+
+fique a vontade para sugerir melhorias de arquitetura, mas o importante é que a solução final atenda a todos os requisitos funcionais e não-funcionais descritos.

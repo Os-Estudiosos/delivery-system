@@ -210,7 +210,20 @@ async def fetch(session, method, url, payload=None):
                 except json.JSONDecodeError:
                     data = None
     except Exception as e:
-        print(f"\n[ERRO DE CONEXÃO REAL] Falha ao tentar {method} em {resolved_url} (Host: {virtual_host}) -> {str(e)}")
+        error_msg = str(e)
+        if not error_msg:
+            error_msg = "Timeout (O serviço demorou mais que o limite para responder)"
+        
+        # Avoid printing thousands of errors
+        if not hasattr(fetch, "error_count"):
+            fetch.error_count = 0
+        fetch.error_count += 1
+        
+        if fetch.error_count <= 5:
+            print(f"\n[ERRO DE CONEXÃO REAL] Falha ao tentar {method} em {resolved_url} (Host: {virtual_host}) -> {error_msg}")
+        elif fetch.error_count == 6:
+            print(f"\n[ERRO DE CONEXÃO REAL] (Silenciando próximos erros idênticos de timeout/conexão para não floodar a tela...)")
+            
         status = 0
         data = None
 
@@ -545,7 +558,8 @@ async def run_load_test(rps, duration, seed_ids, debug_first=False):
     latencies.clear()
     
     connector = aiohttp.TCPConnector(limit=0, resolver=LocalResolver()) # Remove limite de conexões e resolve *.local
-    async with aiohttp.ClientSession(connector=connector) as session:
+    timeout = aiohttp.ClientTimeout(total=15)
+    async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
         queue = asyncio.Queue()
         stats = {"orders_completed": 0, "orders_scheduled": 0}
         
@@ -564,10 +578,10 @@ async def run_load_test(rps, duration, seed_ids, debug_first=False):
                     debug_first = False
             await asyncio.sleep(1) # Aguarda 1 segundo e injeta mais carga
             
-        await queue.join()
+        # Ignora o backlog da fila para terminar exatamente no tempo previsto.
+        # Um stress test real (ex: wrk/hey) não espera a fila esvaziar.
         
-        if background_tasks:
-            await asyncio.gather(*background_tasks, return_exceptions=True)
+        elapsed_seconds = max(time.time() - start_time, 1e-9)
             
         elapsed_seconds = max(time.time() - start_time, 1e-9)
         
@@ -596,21 +610,46 @@ async def main(url: str):
     
     print("--- DijkFood Load Simulator ---")
     connector = aiohttp.TCPConnector(limit=0, resolver=LocalResolver())
-    async with aiohttp.ClientSession(connector=connector) as session:
+    timeout = aiohttp.ClientTimeout(total=15)
+    async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
         seed_ids = await seed_data(session)
 
-    # Cenário 1: Operação Normal (com debug da primeira requisição)
-    await run_load_test(rps=10, duration=10, seed_ids=seed_ids, debug_first=True)
+    # Cenário 1: Operação Normal (silenciado para não floodar)
+    await run_load_test(rps=10, duration=10, seed_ids=seed_ids, debug_first=False)
     
     # Cenário 2: Pico (Almoço/Jantar)
-    # Comentado pois não funcionou bem no ambiente de teste, mas pode ser reativado para testes locais ou em ambiente com mais recursos.
-    # await run_load_test(rps=50, duration=60, seed_ids=seed_ids, debug_first=True)
+    print("\nIniciando teste de pico intermediário: 50 RPS por 180 segundos (3 Minutos)...")
+    await run_load_test(rps=50, duration=180, seed_ids=seed_ids, debug_first=False)
     
+    # Warm-up (100 RPS)
+    print("\n[Warm-up] Subindo para 100 RPS por 120 segundos para permitir que o HPA e o Cluster Autoscaler preparem as EC2s...")
+    await run_load_test(rps=100, duration=120, seed_ids=seed_ids, debug_first=False)
+
+    # Warm-up (150 RPS)
+    print("\n[Warm-up] Subindo para 150 RPS por 120 segundos...")
+    await run_load_test(rps=150, duration=120, seed_ids=seed_ids, debug_first=False)
+
     # Cenário 3: Evento Especial (Requisito Máximo)
-    print("\nAguardando 5s antes do teste de estresse máximo...")
+    print("\nAguardando 5s antes do teste de estresse máximo (200 RPS)...")
     await asyncio.sleep(5)
-    # Comentado pois não funcionou bem no ambiente de teste, mas pode ser reativado para testes locais ou em ambiente com mais recursos.
-    await run_load_test(rps=50, duration=30, seed_ids=seed_ids, debug_first=True) 
+    
+    async def simulate_driver_influx():
+        """Simula adição repentina de motoristas (Escassez/Saturação) no meio do teste"""
+        await asyncio.sleep(15) # Espera 15s de carga rolando
+        print("\n[Simulação Regional] INJETANDO 30 NOVOS ENTREGADORES NO GRAFO PARA ALIVIAR CARGA...")
+        connector = aiohttp.TCPConnector(limit=0, resolver=LocalResolver())
+        async with aiohttp.ClientSession(connector=connector) as local_session:
+            for i in range(30):
+                await fetch(local_session, "POST", f"{BASE_URL}/courier/", {"name": f"Rescue Driver {i}", "vehicle": "motorcycle", "location_id": seed_ids.get("region_id", 1)})
+        print("[Simulação Regional] 30 motoristas de resgate adicionados!")
+
+    influx_task = asyncio.create_task(simulate_driver_influx())
+    
+    print("\nIniciando Teste Final: 200 RPS por 180 Segundos (3 Minutos) com Cluster preparado!")
+    await run_load_test(rps=200, duration=180, seed_ids=seed_ids, debug_first=False) 
+    
+    await influx_task
+
 
 if __name__ == "__main__":
     import sys

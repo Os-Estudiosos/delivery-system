@@ -22,9 +22,10 @@ def print_step(title):
     print(f"==================================================")
 
 
-def run_cmd(cmd, cwd=None, capture_output=False, shell=False):
-    """Executa um comando no shell e trata erros."""
-    print(f"[EXEC] {cmd if isinstance(cmd, str) else ' '.join(cmd)}")
+def run_cmd(cmd, cwd=None, capture_output=True, shell=False):
+    """Executa um comando no shell e trata erros. Logs de sucesso silenciados."""
+    print(f"⏳ [EXEC] {cmd if isinstance(cmd, str) else ' '.join(cmd)}")
+    
     res = subprocess.run(
         cmd,
         cwd=cwd,
@@ -35,8 +36,10 @@ def run_cmd(cmd, cwd=None, capture_output=False, shell=False):
     if res.returncode != 0:
         print(f"\n❌ [ERRO] Falha ao executar: {cmd}")
         if capture_output:
-            print(f"Saída (stdout):\n{res.stdout}")
-            print(f"Erro (stderr):\n{res.stderr}")
+            print("\n--- STDOUT (SAÍDA COMPLETA) ---")
+            print(res.stdout)
+            print("\n--- STDERR (ERROS COMPLETOS) ---")
+            print(res.stderr)
         raise RuntimeError(f"Command failed with exit code {res.returncode}")
     return res.stdout
 
@@ -214,6 +217,11 @@ def main():
         print("[K8s] Implantando Cluster Autoscaler no namespace kube-system...")
         run_cmd(["kubectl", "apply", "-f", str(K8S_DIR / "admin" / "cluster-autoscaler.yaml")])
 
+        print("[K8s] Instalando Metrics Server (necessário para o HPA funcionar)...")
+        run_cmd(["kubectl", "apply", "-f", "https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml"])
+        # Patch para garantir que funcione no EKS sem erros de certificado
+        run_cmd(["kubectl", "patch", "deployment", "metrics-server", "-n", "kube-system", "--type=json", "-p", '[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--kubelet-insecure-tls"}]'])
+
         # Inicializa o esquema de tabelas (DDL.sql) no RDS
         print("[K8s] Inicializando esquema do banco de dados RDS (DDL.sql)...")
         subprocess.run(["kubectl", "delete", "pod", "db-init-temp", "-n", "admin-namespace"], capture_output=True)
@@ -386,10 +394,11 @@ def main():
         # Read simulator-job.yaml
         job_yaml_path = K8S_DIR / "admin" / "simulator-job.yaml"
         job_content = job_yaml_path.read_text()
-        
         # Replace placeholders
         job_content = job_content.replace("<SIMULATOR_IMAGE_URI>", simulator_image_uri)
         job_content = job_content.replace("<TARGET_URL>", sim_url)
+        # Sobrescreve a linha de args para incluir os limites de tempo (20s) e RPS (200)
+        job_content = job_content.replace(f'args: ["{sim_url}"]', f'args: ["{sim_url}", "--rps", "200", "--duration", "20"]')
         
         # Write to a temp file and apply
         temp_job_path = K8S_DIR / "admin" / "temp-simulator-job.yaml"
@@ -421,8 +430,9 @@ def main():
             
             # Wait for job completion
             print("[K8s] Monitorando execução do simulador...")
-            for _ in range(120): # max 10 minutes (120 * 5s)
-                job_json = run_cmd(["kubectl", "get", "job", "load-simulator", "-n", "admin-namespace", "-o", "json"], capture_output=True)
+            for _ in range(180): # max 15 minutes (180 * 5s)
+                job_res = subprocess.run(["kubectl", "get", "job", "load-simulator", "-n", "admin-namespace", "-o", "json"], capture_output=True, text=True)
+                job_json = job_res.stdout if job_res.returncode == 0 else "{}"
                 job_status = json.loads(job_json).get("status", {})
                 if job_status.get("succeeded", 0) > 0:
                     print("\n✅ Simulação de carga concluída com sucesso!")
@@ -444,13 +454,7 @@ def main():
 
     except Exception as e:
         print(f"\n❌ [CRÍTICO] Falha na orquestração: {e}")
-        # Se falhou, mas não foi instruído a manter, força destruição dos recursos
-        if not args.no_destroy and not args.only_deploy and shutil.which("terraform"):
-            print("\n🚨 Acionando destruição de emergência...")
-            try:
-                run_cmd(["terraform", "destroy", "-auto-approve"], cwd=TERRAFORM_DIR)
-            except Exception as destroy_err:
-                print(f"Erro ao tentar executar terraform destroy: {destroy_err}")
+        print("[Aviso] A destruição automática foi desativada para manter o ambiente online para depuração.")
         sys.exit(1)
 
     # ── PASSO 5: Teardown Automático (Final) ────────────────────────

@@ -396,10 +396,9 @@ def get_volume_over_time():
     """
     rows = run_athena_query(query)
     if not rows:
-        # Fallback Mock Data
         return {
-            "labels": ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00"],
-            "values": [12, 15, 22, 45, 120, 138, 90, 35, 42, 58, 110, 195, 230, 85]
+            "labels": [],
+            "values": []
         }
     
     return {
@@ -418,10 +417,9 @@ def get_top_restaurants():
     """
     rows = run_athena_query(query)
     if not rows:
-        # Fallback Mock Data
         return {
-            "labels": ["Trattoria Bella", "Dijkstra Pasta", "Pizzaria O(N)", "Burger Queen", "Sushilog"],
-            "values": [450, 380, 290, 240, 190]
+            "labels": [],
+            "values": []
         }
 
     return {
@@ -444,10 +442,9 @@ def get_transition_times():
     """
     rows = run_athena_query(query)
     if not rows:
-        # Fallback Mock Data
         return {
-            "labels": ["CONFIRMED → PREPARING", "PREPARING → READY", "READY → PICKED_UP", "PICKED_UP → IN_TRANSIT", "IN_TRANSIT → DELIVERED"],
-            "values": [12.4, 185.2, 42.1, 15.3, 310.5]
+            "labels": [],
+            "values": []
         }
 
     labels = [f"{r.get('status', '')} → {r.get('next_status', '')}" for r in rows]
@@ -468,10 +465,9 @@ def get_delivery_histogram():
     """
     rows = run_athena_query(query)
     if not rows:
-        # Fallback Mock Data
         return {
-            "labels": ["0-5 min", "5-10 min", "10-15 min", "15-20 min", "20-25 min", "25-30 min", "30-35 min", "35+ min"],
-            "values": [2, 14, 45, 89, 74, 30, 11, 4]
+            "labels": [],
+            "values": []
         }
 
     labels = [f"{r.get('duration_bucket_start_mins', '')} - {int(r.get('duration_bucket_start_mins', 0)) + 5} min" for r in rows]
@@ -489,10 +485,9 @@ def get_regions():
     """
     rows = run_athena_query(query)
     if not rows:
-        # Fallback Mock Data
         return {
-            "labels": ["São Paulo, Brazil", "Campinas, Brazil", "Santos, Brazil"],
-            "values": [820, 215, 98]
+            "labels": [],
+            "values": []
         }
 
     return {
@@ -509,15 +504,7 @@ def get_heatmap():
     """
     rows = run_athena_query(query)
     if not rows:
-        # Fallback Mock Data
-        mock_values = []
-        # Simulate lunch & dinner peaks on weekdays (1-5) and weekend peaks
-        for day in range(1, 8):
-            for hr in [12, 13, 19, 20]:
-                mock_values.append({"x": day, "y": hr, "r": 15 if day in (6,7) else 10})
-            for hr in [8, 15, 22]:
-                mock_values.append({"x": day, "y": hr, "r": 3})
-        return {"values": mock_values}
+        return {"values": []}
 
     return {
         "values": [

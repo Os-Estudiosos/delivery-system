@@ -60,3 +60,73 @@ resource "aws_athena_workgroup" "dijkfood" {
 
   tags = var.common_tags
 }
+
+resource "aws_glue_catalog_table" "events" {
+  name          = "events"
+  database_name = aws_glue_catalog_database.dijkfood.name
+
+  table_type = "EXTERNAL_TABLE"
+
+  parameters = {
+    "classification"         = "json"
+    "projection.enabled"     = "true"
+    "projection.year.type"   = "integer"
+    "projection.year.range"  = "2023,2030"
+    "projection.year.digits" = "4"
+    "projection.month.type"  = "integer"
+    "projection.month.range" = "01,12"
+    "projection.month.digits"= "2"
+    "projection.day.type"    = "integer"
+    "projection.day.range"   = "01,31"
+    "projection.day.digits"  = "2"
+    "storage.location.template" = "s3://${var.datalake_bucket_name}/events/year=$${year}/month=$${month}/day=$${day}/"
+  }
+
+  storage_descriptor {
+    location      = "s3://${var.datalake_bucket_name}/events/"
+    input_format  = "org.apache.hadoop.mapred.TextInputFormat"
+    output_format = "org.apache.hadoop.hive.ql.io.IgnoreKeyTextOutputFormat"
+
+    ser_de_info {
+      name                  = "json"
+      serialization_library = "org.openx.data.jsonserde.JsonSerDe"
+      parameters = {
+        "ignore.malformed.json" = "true"
+      }
+    }
+
+    columns {
+      name = "order_id"
+      type = "int"
+    }
+    columns {
+      name = "status"
+      type = "string"
+    }
+    columns {
+      name = "restaurant_id"
+      type = "int"
+    }
+    columns {
+      name = "region_id"
+      type = "int"
+    }
+    columns {
+      name = "timestamp"
+      type = "string"
+    }
+  }
+
+  partition_keys {
+    name = "year"
+    type = "string"
+  }
+  partition_keys {
+    name = "month"
+    type = "string"
+  }
+  partition_keys {
+    name = "day"
+    type = "string"
+  }
+}
