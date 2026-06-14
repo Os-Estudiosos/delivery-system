@@ -30,7 +30,7 @@ resource "aws_eks_node_group" "dijkfood" {
   node_group_name = "${var.eks_cluster_name}-nodes"
   node_role_arn   = var.eks_node_role_arn
   subnet_ids      = data.aws_subnets.eks_compatible.ids
-  instance_types  = ["t3.large"]
+  instance_types  = ["t3.medium"]
 
   scaling_config {
     desired_size = 4

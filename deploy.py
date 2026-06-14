@@ -66,6 +66,20 @@ def main():
             print(f"Por favor, certifique-se de que o '{binary}' está instalado e configurado corretamente.")
             sys.exit(1)
 
+    # Obter Account ID do AWS CLI para configurar a LabRole dinâmica no AWS Academy Learner Lab
+    try:
+        account_id = subprocess.check_output(
+            ["aws", "sts", "get-caller-identity", "--query", "Account", "--output", "text"],
+            text=True
+        ).strip()
+        print(f"ℹ️ [AWS] Conta ativa identificada: {account_id}")
+        lab_role_arn = f"arn:aws:iam::{account_id}:role/LabRole"
+        os.environ["TF_VAR_eks_cluster_role_arn"] = lab_role_arn
+        os.environ["TF_VAR_eks_node_role_arn"] = lab_role_arn
+        print(f"ℹ️ [AWS] Configurando TF_VAR_eks_cluster_role_arn e TF_VAR_eks_node_role_arn com {lab_role_arn}")
+    except Exception as e:
+        print(f"⚠️ [AWS] Não foi possível detectar o ID da conta AWS automaticamente: {e}")
+
     # Solicita senha do banco RDS de forma segura se não fornecida
     if "TF_VAR_db_password" not in os.environ and not (TERRAFORM_DIR / "terraform.tfvars").exists():
         import getpass

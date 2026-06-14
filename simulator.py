@@ -582,11 +582,17 @@ async def run_load_test(rps, duration, seed_ids, debug_first=False):
         # Um stress test real (ex: wrk/hey) não espera a fila esvaziar.
         
         elapsed_seconds = max(time.time() - start_time, 1e-9)
-            
-        elapsed_seconds = max(time.time() - start_time, 1e-9)
         
         for w in workers:
             w.cancel()
+        await asyncio.gather(*workers, return_exceptions=True)
+
+        current_bg_tasks = list(background_tasks)
+        for t in current_bg_tasks:
+            t.cancel()
+        if current_bg_tasks:
+            await asyncio.gather(*current_bg_tasks, return_exceptions=True)
+        background_tasks.clear()
 
         if latencies:
             p95 = statistics.quantiles(latencies, n=100)[94]
@@ -639,8 +645,17 @@ async def main(url: str):
         print("\n[Simulação Regional] INJETANDO 30 NOVOS ENTREGADORES NO GRAFO PARA ALIVIAR CARGA...")
         connector = aiohttp.TCPConnector(limit=0, resolver=LocalResolver())
         async with aiohttp.ClientSession(connector=connector) as local_session:
+            city_lat = seed_ids.get("city_lat", _FALLBACK_LAT)
+            city_lon = seed_ids.get("city_lon", _FALLBACK_LON)
+            region_id = seed_ids.get("region_id", 1)
             for i in range(30):
-                await fetch(local_session, "POST", f"{BASE_URL}/courier/", {"name": f"Rescue Driver {i}", "vehicle": "motorcycle", "location_id": seed_ids.get("region_id", 1)})
+                await fetch(local_session, "POST", f"{BASE_URL}/courier/", {
+                    "name": f"Rescue Driver {i}",
+                    "vehicle": "MOTORCYCLE",
+                    "lat": city_lat + random.uniform(-0.015, 0.015),
+                    "lon": city_lon + random.uniform(-0.015, 0.015),
+                    "region_id": region_id
+                })
         print("[Simulação Regional] 30 motoristas de resgate adicionados!")
 
     influx_task = asyncio.create_task(simulate_driver_influx())
