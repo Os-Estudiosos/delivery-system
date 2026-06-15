@@ -147,7 +147,7 @@ sep "CLIENT — CRUD"
 # ─────────────────────────────────────────────
 R=$(curl -s -w "\n%{http_code}" -X POST "$BASE_CLIENT/client" \
   -H "Content-Type: application/json" \
-  -d "{\"email\":\"joao_${RAND}@test.com\",\"name\":\"João Silva\",\"house_lat\":-23.551,\"house_lon\":-46.634,\"region_id\":1,\"phones\":[\"1199999${RAND:0:4}\"]}")
+  -d "{\"email\":\"joao_${RAND}@test.com\",\"name\":\"João Silva\",\"house_lat\":-23.551,\"house_lon\":-46.634,\"phones\":[\"1199999${RAND:0:4}\"]}")
 STATUS=$(echo "$R" | tail -1); BODY=$(echo "$R" | head -1)
 check "POST /client" 201 "$STATUS" "$BODY"
 CLIENT_ID=$(echo "$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])" 2>/dev/null || echo "1")
@@ -168,7 +168,7 @@ sep "COURIER — CRUD + POSIÇÃO"
 # ─────────────────────────────────────────────
 R=$(curl -s -w "\n%{http_code}" -X POST "$BASE_COURIER/courier/" \
   -H "Content-Type: application/json" \
-  -d '{"name":"Carlos Moto","vehicle":"MOTORCYCLE","lat":-23.550,"lon":-46.633,"region_id":1}')
+  -d '{"name":"Carlos Moto","vehicle":"MOTORCYCLE","lat":-23.550,"lon":-46.633}')
 STATUS=$(echo "$R" | tail -1); BODY=$(echo "$R" | head -1)
 check "POST /courier/" 201 "$STATUS" "$BODY"
 COURIER_ID=$(echo "$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])" 2>/dev/null || echo "1")

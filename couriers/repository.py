@@ -12,14 +12,9 @@ def get_courier(session: Session, courier_id: int) -> Courier | None:
     return session.query(Courier).filter(Courier.id == courier_id).first()
 
 
-def create_courier(session: Session, *, name: str, vehicle: str, lat: float, lon: float, region_id: int) -> Courier:
-    # ensure region exists
-    region = session.query(Region).filter(Region.id == region_id).first()
-    if not region:
-        return None
-
+def create_courier(session: Session, *, name: str, vehicle: str, lat: float, lon: float) -> Courier:
     v = VehicleType(vehicle)
-    db_courier = Courier(name=name, vehicle=v, lat=lat, lon=lon, region_id=region_id)
+    db_courier = Courier(name=name, vehicle=v, lat=lat, lon=lon)
     session.add(db_courier)
     try:
         session.commit()
@@ -30,12 +25,7 @@ def create_courier(session: Session, *, name: str, vehicle: str, lat: float, lon
     return db_courier
 
 
-def update_courier(session: Session, courier: Courier, *, name: str | None = None, vehicle: str | None = None, lat: float | None = None, lon: float | None = None, region_id: int | None = None) -> Courier:
-    if region_id is not None:
-        region = session.query(Region).filter(Region.id == region_id).first()
-        if not region:
-            return None
-        courier.region_id = region_id
+def update_courier(session: Session, courier: Courier, *, name: str | None = None, vehicle: str | None = None, lat: float | None = None, lon: float | None = None) -> Courier:
 
     if name is not None:
         courier.name = name

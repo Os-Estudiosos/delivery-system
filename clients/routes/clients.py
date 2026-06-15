@@ -35,7 +35,6 @@ class ClientCreate(BaseModel):
     name: str
     house_lat: float
     house_lon: float
-    region_id: int | None = None
     phones: list[str] = []
 
 
@@ -44,7 +43,6 @@ class ClientUpdate(BaseModel):
     name: str | None = None
     house_lat: float | None = None
     house_lon: float | None = None
-    region_id: int | None = None
     phones: list[str] | None = None
 
 
@@ -54,7 +52,6 @@ class ClientResponse(BaseModel):
     name: str
     house_lat: float
     house_lon: float
-    region_id: int
     phones: list[str] = []
 
 
@@ -116,15 +113,8 @@ def get_client(session: Session, client_id: int) -> User | None:
     return session.query(User).filter(User.id == client_id).first()
 
 
-def create_client(session: Session, *, email: str, name: str, house_lat: float, house_lon: float, region_id: int | None = None, phones: list[str] = []) -> User:
-    if region_id is None:
-        region_id = REGION_ID
-
-    region = session.query(Region).filter(Region.id == region_id).first()
-    if not region:
-        return None
-
-    db_user = User(email=email, name=name, house_lat=house_lat, house_lon=house_lon, region_id=region_id)
+def create_client(session: Session, *, email: str, name: str, house_lat: float, house_lon: float, phones: list[str] = []) -> User:
+    db_user = User(email=email, name=name, house_lat=house_lat, house_lon=house_lon)
     for phone in phones:
         db_user.phones.append(Phone(phone=phone))
     session.add(db_user)
@@ -137,13 +127,7 @@ def create_client(session: Session, *, email: str, name: str, house_lat: float, 
     return db_user
 
 
-def update_client(session: Session, client: User, *, email: str | None = None, name: str | None = None, house_lat: float | None = None, house_lon: float | None = None, region_id: int | None = None, phones: list[str] | None = None) -> User:
-    if region_id is not None:
-        region = session.query(Region).filter(Region.id == region_id).first()
-        if not region:
-            return None
-        client.region_id = region_id
-
+def update_client(session: Session, client: User, *, email: str | None = None, name: str | None = None, house_lat: float | None = None, house_lon: float | None = None, phones: list[str] | None = None) -> User:
     if email is not None:
         client.email = email
     if name is not None:
@@ -253,7 +237,6 @@ def _to_response(u: User) -> ClientResponse:
         name=u.name,
         house_lat=u.house_lat,
         house_lon=u.house_lon,
-        region_id=u.region_id or REGION_ID,
         phones=[phone.phone for phone in u.phones],
     )
 
@@ -286,7 +269,6 @@ def create(client: ClientCreate, session: Session = Depends(get_session)):
             name=client.name,
             house_lat=client.house_lat,
             house_lon=client.house_lon,
-            region_id=client.region_id,
             phones=client.phones,
         )
     except IntegrityError:
@@ -310,7 +292,6 @@ def patch(client_id: int, client: ClientUpdate, session: Session = Depends(get_s
             name=client.name,
             house_lat=client.house_lat,
             house_lon=client.house_lon,
-            region_id=client.region_id,
             phones=client.phones,
         )
     except IntegrityError:
@@ -343,7 +324,6 @@ def create_user(user: UserCreate, session: Session = Depends(get_session)):
         name=user.name,
         house_lat=user.house_lat,
         house_lon=user.house_lon,
-        region_id=REGION_ID,
     )
 
     for phone in user.phones:

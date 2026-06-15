@@ -37,7 +37,9 @@ resource "aws_pipes_pipe" "sqs_to_firehose" {
     }
   }
 
-
+  target_parameters {
+    input_template = "{\"order_id\": <$.body.order_id>, \"status\": \"<$.body.status>\", \"restaurant_id\": <$.body.restaurant_id>, \"region_id\": <$.body.region_id>, \"timestamp\": \"<$.body.timestamp>\"}\n"
+  }
 
   tags = var.common_tags
 }

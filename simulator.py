@@ -24,7 +24,14 @@ _FALLBACK_LAT = -4.9416
 _FALLBACK_LON = -37.9725
 
 class LocalResolver(aiohttp.abc.AbstractResolver):
+    def __init__(self):
+        self._cache = {}
+
     async def resolve(self, host, port=0, family=socket.AF_INET):
+        cache_key = (host, port, family)
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
         if host.endswith(".local"):
             if Path("/var/run/secrets/kubernetes.io").exists():
                 parts = host.split(".")
@@ -43,7 +50,7 @@ class LocalResolver(aiohttp.abc.AbstractResolver):
                     try:
                         loop = asyncio.get_running_loop()
                         res = await loop.run_in_executor(None, socket.getaddrinfo, k8s_host, k8s_port, family)
-                        return [{
+                        resolved = [{
                             "hostname": host,
                             "host": item[4][0],
                             "port": item[4][1],
@@ -51,9 +58,11 @@ class LocalResolver(aiohttp.abc.AbstractResolver):
                             "proto": item[2],
                             "flags": 0
                         } for item in res]
+                        self._cache[cache_key] = resolved
+                        return resolved
                     except Exception as e:
                         print(f"Failed to resolve internal K8s host {k8s_host}: {e}")
-            return [{
+            resolved = [{
                 "hostname": host,
                 "host": "127.0.0.1",
                 "port": port,
@@ -61,10 +70,12 @@ class LocalResolver(aiohttp.abc.AbstractResolver):
                 "proto": 0,
                 "flags": 0
             }]
+            self._cache[cache_key] = resolved
+            return resolved
         try:
             loop = asyncio.get_running_loop()
             res = await loop.run_in_executor(None, socket.getaddrinfo, host, port, family)
-            return [{
+            resolved = [{
                 "hostname": host,
                 "host": item[4][0],
                 "port": item[4][1],
@@ -72,8 +83,10 @@ class LocalResolver(aiohttp.abc.AbstractResolver):
                 "proto": item[2],
                 "flags": 0
             } for item in res]
+            self._cache[cache_key] = resolved
+            return resolved
         except Exception:
-            return [{
+            resolved = [{
                 "hostname": host,
                 "host": "127.0.0.1",
                 "port": port,
@@ -81,6 +94,8 @@ class LocalResolver(aiohttp.abc.AbstractResolver):
                 "proto": 0,
                 "flags": 0
             }]
+            self._cache[cache_key] = resolved
+            return resolved
 
     async def close(self):
         pass
@@ -237,13 +252,28 @@ async def _discover_region(session) -> tuple[int, str]:
     Aguarda até a região existir (o admin-service pode demorar para criar via K8s).
     Retorna (region_id, city_name).
     """
+    parsed = urllib.parse.urlparse(BASE_URL)
+    hostname = parsed.hostname or ""
+    target_region_id = None
+    if hostname.startswith("city-"):
+        parts = hostname.split("-")
+        if len(parts) > 1 and parts[1].isdigit():
+            target_region_id = int(parts[1])
+
     for attempt in range(20):
         status_code, regions = await fetch(session, 'GET', f"{BASE_URL}/region/")
         if status_code in (200, 201) and isinstance(regions, list) and regions:
+            if target_region_id is not None:
+                for r in regions:
+                    if r.get("id") == target_region_id:
+                        region_id = r.get("id")
+                        city_name = r.get("name", "")
+                        print(f"[Seed] Região correspondente encontrada: id={region_id}, name='{city_name}'")
+                        return region_id, city_name
             first = regions[0]
             region_id = first.get("id", 1)
             city_name = first.get("name", "")
-            print(f"[Seed] Região encontrada: id={region_id}, name='{city_name}'")
+            print(f"[Seed] Região padrão encontrada: id={region_id}, name='{city_name}'")
             return region_id, city_name
         print(f"[Seed] Aguardando região disponível... (tentativa {attempt + 1}/20)")
         await asyncio.sleep(3)
@@ -258,6 +288,15 @@ async def _geocode_city_center(city_name: str) -> tuple[float, float]:
     """
     if not city_name:
         return _FALLBACK_LAT, _FALLBACK_LON
+
+    # Hardcoded coordinates for major cities to bypass external Nominatim queries and rate-limiting
+    city_lower = city_name.lower()
+    if "são paulo" in city_lower or "sao paulo" in city_lower:
+        print(f"[Seed] Usando coordenadas estáticas para São Paulo: lat=-23.5505, lon=-46.6333")
+        return -23.5505, -46.6333
+    elif "russas" in city_lower:
+        print(f"[Seed] Usando coordenadas estáticas para Russas: lat=-4.9416, lon=-37.9725")
+        return -4.9416, -37.9725
 
     try:
         encoded = urllib.parse.quote(city_name)
@@ -326,25 +365,39 @@ async def seed_data(session):
     #    do grafo viário daquela cidade, independente de qual cidade for registrada.
     city_lat, city_lon = await _geocode_city_center(city_name)
 
-    # 2. Cozinha e Restaurante — posicionado no centro da cidade ativa
-    kitchen_status, kitchen_data = await fetch(session, 'POST', f"{BASE_URL}/kitchen/", {"type": "Italiana"})
+    # 2. Cozinha
+    kitchen_status, kitchen_data = await fetch(session, 'POST', f"{BASE_URL}/kitchen/", {"type": "Variada"})
     kitchen_id = kitchen_data.get("id", 1) if kitchen_status in (200, 201) and kitchen_data else 1
 
-    restaurant_status, restaurant_data = await fetch(session, 'POST', f"{BASE_URL}/restaurant/", {
-        "name": "Dijkstra Pasta",
-        "lat": city_lat,
-        "lon": city_lon,
-        "kitchen_type_id": kitchen_id,
-    })
-    restaurant_id = restaurant_data.get("id", 1) if restaurant_status in (200, 201) and restaurant_data else 1
+    restaurant_names = [
+        "Dijkstra Pasta", "Prim Pizza", "Kruskal Burger", "Bellman Bistro",
+        "Floyd Grill", "Turing Tacos", "Lovelace Lasagna", "Knuth Kabob"
+    ]
+    item_names = [
+        "Spaghetti O(V+E)", "Pizza Graph-Marguerita", "MST Double Burger", "Shortest Path Steak",
+        "Matrix Ribs", "Halting Quesadilla", "Ada Lasagna Special", "B-Tree Beef"
+    ]
+    
+    restaurant_ids = []
+    item_ids = []
+    
+    for i, name in enumerate(restaurant_names):
+        restaurant_status, restaurant_data = await fetch(session, 'POST', f"{BASE_URL}/restaurant/", {
+            "name": name,
+            "lat": city_lat + random.uniform(-0.008, 0.008),
+            "lon": city_lon + random.uniform(-0.008, 0.008),
+            "kitchen_type_id": kitchen_id,
+        })
+        r_id = restaurant_data.get("id", i+1) if restaurant_status in (200, 201) and restaurant_data else i+1
+        restaurant_ids.append(r_id)
+        
+        item_status, item_data = await fetch(session, 'POST', f"{BASE_URL}/item/", {
+            "name": item_names[i], "price": random.uniform(25.0, 75.0), "restaurant_id": r_id
+        })
+        it_id = item_data.get("id", i+1) if item_status in (200, 201) and item_data else i+1
+        item_ids.append(it_id)
 
-    # 3. Item
-    item_status, item_data = await fetch(session, 'POST', f"{BASE_URL}/item/", {
-        "name": "Spaghetti O(V+E)", "price": 45.50, "restaurant_id": restaurant_id
-    })
-    item_id = item_data.get("id", 1) if item_status in (200, 201) and item_data else 1
-
-    # 4. Usuário — casa a ~500m do restaurante
+    # 4. Usuário — casa a ~500m do restaurante principal
     user_status, user_data = await fetch(session, 'POST', f"{BASE_URL}/user", {
         "name": "Cliente Teste",
         "email": "cliente@dijkfood.br",
@@ -366,7 +419,6 @@ async def seed_data(session):
             "vehicle": "MOTORCYCLE",
             "lat": city_lat + random.uniform(-0.015, 0.015),
             "lon": city_lon + random.uniform(-0.015, 0.015),
-            "region_id": region_id,
         })
         if c_status in (200, 201) and c_data:
             courier_ids.append(c_data.get("id"))
@@ -376,8 +428,8 @@ async def seed_data(session):
 
     return {
         "kitchen_id": kitchen_id,
-        "restaurant_id": restaurant_id,
-        "item_id": item_id,
+        "restaurant_ids": restaurant_ids,
+        "item_ids": item_ids,
         "user_id": user_id,
         "region_id": region_id,
         "city_lat": city_lat,
@@ -437,10 +489,17 @@ async def simulate_order_lifecycle(session, seed_ids, debug=False):
     region_id = seed_ids.get("region_id", 1)
     try:
         # 1. Cria Pedido — o matching-service já encontra o melhor entregador via Dijkstra
+        # Choose a random restaurant and its corresponding item from the seed pool
+        restaurant_ids = seed_ids.get("restaurant_ids", [seed_ids.get("restaurant_id", 1)])
+        item_ids = seed_ids.get("item_ids", [seed_ids.get("item_id", 1)])
+        idx = random.randint(0, len(restaurant_ids) - 1)
+        r_id = restaurant_ids[idx]
+        it_id = item_ids[idx]
+
         order_payload = {
-            "restaurant_id": seed_ids["restaurant_id"],
+            "restaurant_id": r_id,
             "user_id": seed_ids["user_id"],
-            "items": [{"item_id": seed_ids["item_id"], "quantity": 2}],
+            "items": [{"item_id": it_id, "quantity": random.randint(1, 4)}],
         }
         order_status, order_data = await fetch(session, 'POST', f"{BASE_URL}/order/", order_payload)
         if order_status not in (200, 201) or not order_data:
@@ -472,7 +531,6 @@ async def simulate_order_lifecycle(session, seed_ids, debug=False):
                 "vehicle": "MOTORCYCLE",
                 "lat": c_lat + random.uniform(-0.010, 0.010),
                 "lon": c_lon + random.uniform(-0.010, 0.010),
-                "region_id": region_id,
             }
             courier_status, courier_data = await fetch(session, 'POST', f"{BASE_URL}/courier/", courier_payload)
             if courier_status in (200, 201) and courier_data:
@@ -610,7 +668,7 @@ async def run_load_test(rps, duration, seed_ids, debug_first=False):
             else:
                 print("AVISO: P95 acima de 500ms. ECS pode estar precisando de mais containers.")
 
-async def main(url: str):
+async def main(url: str, rps: int = None, duration: int = None):
     global BASE_URL, CITY_NAMESPACE
     BASE_URL = url
     
@@ -619,6 +677,16 @@ async def main(url: str):
     timeout = aiohttp.ClientTimeout(total=15)
     async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
         seed_ids = await seed_data(session)
+
+    import os
+    is_quick = os.environ.get("QUICK_TEST") == "true"
+    
+    if is_quick or rps is not None or duration is not None:
+        target_rps = rps if rps is not None else 10
+        target_duration = duration if duration is not None else 15
+        print(f"[Quick/Custom Mode] Running only a single load test: {target_rps} RPS for {target_duration} seconds.")
+        await run_load_test(rps=target_rps, duration=target_duration, seed_ids=seed_ids, debug_first=False)
+        return
 
     # Cenário 1: Operação Normal (silenciado para não floodar)
     await run_load_test(rps=10, duration=10, seed_ids=seed_ids, debug_first=False)
@@ -653,8 +721,7 @@ async def main(url: str):
                     "name": f"Rescue Driver {i}",
                     "vehicle": "MOTORCYCLE",
                     "lat": city_lat + random.uniform(-0.015, 0.015),
-                    "lon": city_lon + random.uniform(-0.015, 0.015),
-                    "region_id": region_id
+                    "lon": city_lon + random.uniform(-0.015, 0.015)
                 })
         print("[Simulação Regional] 30 motoristas de resgate adicionados!")
 
@@ -668,9 +735,31 @@ async def main(url: str):
 
 if __name__ == "__main__":
     import sys
+    url = None
+    rps = None
+    duration = None
+    
     if len(sys.argv) > 1:
-        url = sys.argv[1]
-    else:
-        ctx = json.loads(Path("deploy_context.json").read_text())
-        url = f"http://{ctx['alb_dns']}"
-    asyncio.run(main(url))
+        if not sys.argv[1].startswith("-"):
+            url = sys.argv[1]
+            
+    for i in range(1, len(sys.argv)):
+        if sys.argv[i] == "--rps" and i + 1 < len(sys.argv):
+            try:
+                rps = int(sys.argv[i + 1])
+            except ValueError:
+                pass
+        elif sys.argv[i] == "--duration" and i + 1 < len(sys.argv):
+            try:
+                duration = int(sys.argv[i + 1])
+            except ValueError:
+                pass
+                
+    if not url:
+        try:
+            ctx = json.loads(Path("deploy_context.json").read_text())
+            url = f"http://{ctx['alb_dns']}"
+        except Exception:
+            url = "http://localhost"
+            
+    asyncio.run(main(url, rps, duration))

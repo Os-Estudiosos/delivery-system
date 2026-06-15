@@ -81,19 +81,20 @@ def main():
         print(f"⚠️ [AWS] Não foi possível detectar o ID da conta AWS automaticamente: {e}")
 
     # Solicita senha do banco RDS de forma segura se não fornecida
-    if "TF_VAR_db_password" not in os.environ and not (TERRAFORM_DIR / "terraform.tfvars").exists():
-        import getpass
+    import getpass
+    db_password = os.environ.get("TF_VAR_db_password")
+    if not db_password and not (TERRAFORM_DIR / "terraform.tfvars").exists():
         try:
-            password = getpass.getpass("🔑 Digite a senha desejada para o banco de dados RDS: ").strip()
+            db_password = getpass.getpass("🔑 Digite a senha desejada para o banco de dados RDS: ").strip()
         except Exception:
             try:
-                password = input("🔑 Digite a senha desejada para o banco de dados RDS: ").strip()
+                db_password = input("🔑 Digite a senha desejada para o banco de dados RDS: ").strip()
             except Exception:
-                password = ""
-        if not password:
+                db_password = ""
+        if not db_password:
             print("\n❌ [ERRO] A senha do banco de dados é obrigatória para o provisionamento do RDS.")
             sys.exit(1)
-        os.environ["TF_VAR_db_password"] = password
+        os.environ["TF_VAR_db_password"] = db_password
 
     # Se a flag for apenas destruir, executa e encerra
     if args.only_destroy:
@@ -339,132 +340,208 @@ def main():
         if not ingress_hostname:
             print("⚠️  Aviso: não foi possível obter o hostname do LoadBalancer. Simulador local usará URL vazia.")
 
-        # Registrar a cidade de Russas, Ceará para iniciar o deploy dinâmico
-        print("[K8s] Registrando cidade 'Russas, Ceará, Brazil' no painel administrativo...")
-        pf_proc = subprocess.Popen([
-            "kubectl", "port-forward", "-n", "admin-namespace", "svc/admin", "4000:4000"
-        ])
-        time.sleep(5) # Aguarda port-forward estabelecer
-
-        namespace_name = "city-1-russas-ceara-brazil" # fallback default
+        # Registra cidades na API
+        cities_to_register = ["São Paulo, Brazil", "Russas, Ceará, Brazil"]
+        namespaces = []
         try:
-            city_payload = json.dumps({"name": "Russas, Ceará, Brazil"}).encode("utf-8")
-            req = urllib.request.Request(
-                "http://localhost:4000/city",
-                data=city_payload,
-                headers={"Content-Type": "application/json"},
-                method="POST"
-            )
-            print("[HTTP] Enviando requisição para cadastrar cidade...")
-            with urllib.request.urlopen(req, timeout=120) as response:
-                resp_data = json.loads(response.read().decode("utf-8"))
-                namespace_name = resp_data.get("namespace", namespace_name)
-                print(f"✅ Cidade cadastrada! Namespace retornado: {namespace_name}")
-        except Exception as city_err:
-            print(f"⚠️ Aviso ao criar cidade via API (pode já existir): {city_err}")
-            # Se falhou, vamos consultar as cidades cadastradas para descobrir o namespace correto
-            try:
-                with urllib.request.urlopen("http://localhost:4000/city", timeout=10) as response:
-                    cities = json.loads(response.read().decode("utf-8"))
-                    for c in cities:
-                        if "russas" in c.get("name", "").lower():
-                            namespace_name = c.get("namespace", namespace_name)
-                            print(f"🔍 Encontrada cidade existente. Namespace: {namespace_name}")
-                            break
-            except Exception as list_err:
-                print(f"⚠️ Não foi possível listar cidades: {list_err}. Usando namespace padrão: {namespace_name}")
+            # We port-forward the admin service port 4000 to talk to the API
+            pf_cmd = ["kubectl", "port-forward", "-n", "admin-namespace", "svc/admin", "4000:4000"]
+            pf_proc = subprocess.Popen(pf_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            time.sleep(3) # Wait for port-forward to establish
+            
+            for city in cities_to_register:
+                ns_name = None
+                try:
+                    city_payload = json.dumps({"name": city}).encode("utf-8")
+                    req = urllib.request.Request(
+                        "http://localhost:4000/city",
+                        data=city_payload,
+                        headers={"Content-Type": "application/json"},
+                        method="POST"
+                    )
+                    print(f"[HTTP] Enviando requisição para cadastrar cidade '{city}'...")
+                    with urllib.request.urlopen(req, timeout=120) as response:
+                        resp_data = json.loads(response.read().decode("utf-8"))
+                        ns_name = resp_data.get("namespace")
+                        if ns_name:
+                            namespaces.append(ns_name)
+                            print(f"✅ Cidade '{city}' cadastrada! Namespace retornado: {ns_name}")
+                except Exception as city_err:
+                    print(f"⚠️ Aviso ao criar cidade '{city}' via API (pode já existir): {city_err}")
+                    # Se falhou, vamos consultar as cidades cadastradas para descobrir o namespace correto
+                    try:
+                        with urllib.request.urlopen("http://localhost:4000/city", timeout=10) as response:
+                            cities_list = json.loads(response.read().decode("utf-8"))
+                            for c in cities_list:
+                                if c.get("name", "").lower() == city.lower():
+                                    ns_name = c.get("namespace")
+                                    if ns_name:
+                                        namespaces.append(ns_name)
+                                        print(f"🔍 Encontrada cidade existente '{city}'. Namespace: {ns_name}")
+                                        break
+                    except Exception as list_err:
+                        print(f"⚠️ Não foi possível listar cidades: {list_err}")
         finally:
             pf_proc.terminate()
 
-        # Persiste alb_dns e city_namespace DEPOIS de resolver o namespace real via API
-        context_data = {"alb_dns": ingress_hostname, "city_namespace": namespace_name}
+        # Fallbacks se nenhuma foi cadastrada com sucesso
+        if not namespaces:
+            namespaces = ["city-1-s-o-paulo-brazil", "city-2-russas-cear-brazil"]
+
+        # Persiste o último namespace no deploy_context.json para compatibilidade
+        context_data = {"alb_dns": ingress_hostname, "city_namespace": namespaces[-1]}
         Path("deploy_context.json").write_text(json.dumps(context_data, indent=2))
-        print(f"deploy_context.json atualizado: alb_dns={ingress_hostname}, city_namespace={namespace_name}")
+        print(f"deploy_context.json atualizado: alb_dns={ingress_hostname}, city_namespace={namespaces[-1]}")
 
-        print(f"[K8s] Reiniciando deployments no namespace dinâmico {namespace_name} para garantir atualização de imagens...")
-        for deploy_name in ["clients", "couriers", "matching", "orders", "restaurants", "region"]:
-            subprocess.run(["kubectl", "rollout", "restart", f"deployment/{deploy_name}", "-n", namespace_name])
+        for namespace_name in namespaces:
+            print(f"[K8s] Reiniciando deployments no namespace {namespace_name}...")
+            for deploy_name in ["clients", "couriers", "matching", "orders", "restaurants", "region"]:
+                subprocess.run(["kubectl", "rollout", "restart", f"deployment/{deploy_name}", "-n", namespace_name])
 
-        # Aguardar um momento para os pods da cidade começarem a subir no namespace dinâmico
-        print(f"[K8s] Aguardando inicialização do roteador (matching) no namespace {namespace_name}...")
+        # Aguardar um momento para os pods começarem a subir nos namespaces
+        print(f"[K8s] Aguardando inicialização do roteador (matching) nos namespaces...")
         time.sleep(10)
-        try:
-            run_cmd([
-                "kubectl", "wait", "--namespace", namespace_name, 
-                "--for=condition=ready", "pod", "--selector=app=matching", "--timeout=180s"
-            ])
-        except Exception as wait_err:
-            print(f"⚠️ Aviso ao aguardar pod matching: {wait_err}. Continuando mesmo assim...")
+        for namespace_name in namespaces:
+            try:
+                run_cmd([
+                    "kubectl", "wait", "--namespace", namespace_name, 
+                    "--for=condition=ready", "pod", "--selector=app=matching", "--timeout=180s"
+                ])
+            except Exception as wait_err:
+                print(f"⚠️ Aviso ao aguardar pod matching em {namespace_name}: {wait_err}. Continuando...")
 
         print("\n✅ Deploy concluído com sucesso!")
         if args.only_deploy:
             return
 
         # ── PASSO 4: Executar Simulador de Carga ──────────────────────
-        print_step("Passo 4: Executando Simulador de Carga como K8s Job no EKS")
-        sim_url = f"http://{namespace_name}.local"
+        print_step("Passo 4: Executando Simulador de Carga como K8s Jobs no EKS")
         simulator_image_uri = f"{tf_outputs['account_id']}.dkr.ecr.{aws_region}.amazonaws.com/delivery-system/simulator:latest"
+        
+        # We will run the load simulator for all registered namespaces
+        # which are São Paulo (city-1-s-o-paulo-brazil) and Russas (city-2-russas-cear-brazil)
+        namespaces_to_simulate = ["city-1-s-o-paulo-brazil", "city-2-russas-cear-brazil"]
         
         # Read simulator-job.yaml
         job_yaml_path = K8S_DIR / "admin" / "simulator-job.yaml"
-        job_content = job_yaml_path.read_text()
-        # Replace placeholders
-        job_content = job_content.replace("<SIMULATOR_IMAGE_URI>", simulator_image_uri)
-        job_content = job_content.replace("<TARGET_URL>", sim_url)
-        # Sobrescreve a linha de args para incluir os limites de tempo (20s) e RPS (200)
-        job_content = job_content.replace(f'args: ["{sim_url}"]', f'args: ["{sim_url}", "--rps", "200", "--duration", "20"]')
+        job_template = job_yaml_path.read_text()
         
-        # Write to a temp file and apply
-        temp_job_path = K8S_DIR / "admin" / "temp-simulator-job.yaml"
-        temp_job_path.write_text(job_content)
+        job_names = []
+        temp_paths = []
         
-        # Delete any existing simulator job first
-        subprocess.run(["kubectl", "delete", "job", "load-simulator", "-n", "admin-namespace"], capture_output=True)
-        
+        for idx, ns in enumerate(namespaces_to_simulate):
+            job_name = f"load-simulator-{idx + 1}"
+            sim_url = f"http://{ns}.local"
+            
+            job_content = job_template
+            job_content = job_content.replace("name: load-simulator", f"name: {job_name}")
+            job_content = job_content.replace("<SIMULATOR_IMAGE_URI>", simulator_image_uri)
+            job_content = job_content.replace("<TARGET_URL>", sim_url)
+            job_content = job_content.replace(f'args: ["{sim_url}"]', f'args: ["{sim_url}", "--rps", "30", "--duration", "20"]')
+            
+            # Write to a temp file and apply
+            temp_job_path = K8S_DIR / "admin" / f"temp-{job_name}.yaml"
+            temp_job_path.write_text(job_content)
+            temp_paths.append(temp_job_path)
+            job_names.append(job_name)
+            
+            # Delete any existing simulator job first
+            subprocess.run(["kubectl", "delete", "job", job_name, "-n", "admin-namespace"], capture_output=True)
+            
         try:
-            # Apply the Job
-            run_cmd(["kubectl", "apply", "-f", str(temp_job_path)])
-            
-            # Wait for the job pod to start and get its name
-            print("[K8s] Aguardando o Job do simulador iniciar...")
-            pod_name = ""
-            for _ in range(30):
-                pods_out = run_cmd(["kubectl", "get", "pods", "-n", "admin-namespace", "-l", "job-name=load-simulator", "-o", "jsonpath={.items[0].metadata.name}"], capture_output=True)
-                if pods_out.strip():
-                    pod_name = pods_out.strip()
-                    break
-                time.sleep(2)
+            # Apply all Jobs
+            for temp_path in temp_paths:
+                run_cmd(["kubectl", "apply", "-f", str(temp_path)])
                 
-            if not pod_name:
-                raise RuntimeError("Pod do simulador de carga não foi criado a tempo.")
+            # Stream logs and wait for completion of all jobs
+            log_processes = []
+            pod_names = {}
+            
+            print("[K8s] Aguardando os Jobs do simulador iniciarem...")
+            time.sleep(5)
+            
+            for job_name in job_names:
+                pod_name = ""
+                for _ in range(30):
+                    pods_out = run_cmd(["kubectl", "get", "pods", "-n", "admin-namespace", "-l", f"job-name={job_name}", "-o", "jsonpath={.items[0].metadata.name}"], capture_output=True)
+                    if pods_out.strip():
+                        pod_name = pods_out.strip()
+                        break
+                    time.sleep(2)
+                if pod_name:
+                    pod_names[job_name] = pod_name
+                    print(f"[K8s] Iniciando streaming de logs do Pod {pod_name}...")
+                    log_proc = subprocess.Popen(["kubectl", "logs", "-n", "admin-namespace", pod_name, "-f"])
+                    log_processes.append(log_proc)
+            
+            # Wait for all jobs to complete
+            print("[K8s] Monitorando execução dos simuladores...")
+            active_jobs = list(job_names)
+            start_wait = time.time()
+            
+            while active_jobs and (time.time() - start_wait < 900): # max 15 minutes
+                still_active = []
+                for job_name in active_jobs:
+                    job_res = subprocess.run(["kubectl", "get", "job", job_name, "-n", "admin-namespace", "-o", "json"], capture_output=True, text=True)
+                    job_json = job_res.stdout if job_res.returncode == 0 else "{}"
+                    job_status = json.loads(job_json).get("status", {})
+                    if job_status.get("succeeded", 0) > 0:
+                        print(f"\n✅ Simulação de carga do job '{job_name}' concluída com sucesso!")
+                    elif job_status.get("failed", 0) > 0:
+                        raise RuntimeError(f"O Job do simulador '{job_name}' falhou.")
+                    else:
+                        still_active.append(job_name)
+                active_jobs = still_active
+                if active_jobs:
+                    time.sleep(5)
+            
+            if active_jobs:
+                raise RuntimeError("Tempo limite de execução dos simuladores excedido.")
                 
-            print(f"[K8s] Streaming de logs do Pod {pod_name}...")
-            # Stream logs in real time in background
-            log_proc = subprocess.Popen(["kubectl", "logs", "-n", "admin-namespace", pod_name, "-f"])
-            
-            # Wait for job completion
-            print("[K8s] Monitorando execução do simulador...")
-            for _ in range(180): # max 15 minutes (180 * 5s)
-                job_res = subprocess.run(["kubectl", "get", "job", "load-simulator", "-n", "admin-namespace", "-o", "json"], capture_output=True, text=True)
-                job_json = job_res.stdout if job_res.returncode == 0 else "{}"
-                job_status = json.loads(job_json).get("status", {})
-                if job_status.get("succeeded", 0) > 0:
-                    print("\n✅ Simulação de carga concluída com sucesso!")
-                    break
-                if job_status.get("failed", 0) > 0:
-                    raise RuntimeError("O Job do simulador falhou durante a execução.")
-                time.sleep(5)
-            else:
-                raise RuntimeError("Tempo limite de execução do simulador excedido.")
-            
-            # Terminate log streaming process
-            log_proc.terminate()
+            # Terminate log processes
+            for lp in log_processes:
+                lp.terminate()
+
+            # ── PASSO 4.5: Formatar Arquivos S3 para NDJSON ──────────────────
+            print("\n[S3] Formatando arquivos de log do S3 para o formato JSON Lines (NDJSON)...")
+            s3_clean_script = f"""
+import boto3
+s3 = boto3.client('s3', region_name='{aws_region}')
+bucket = '{datalake_bucket}'
+paginator = s3.get_paginator('list_objects_v2')
+pages = paginator.paginate(Bucket=bucket, Prefix='events/')
+files_processed = 0
+for page in pages:
+    if 'Contents' not in page:
+        continue
+    for obj in page['Contents']:
+        key = obj['Key']
+        if key.endswith('/'):
+            continue
+        resp = s3.get_object(Bucket=bucket, Key=key)
+        content = resp['Body'].read().decode('utf-8', errors='ignore')
+        formatted = content.replace('}}{{', '}}\\n{{')
+        if formatted != content:
+            s3.put_object(Bucket=bucket, Key=key, Body=formatted.encode('utf-8'))
+            files_processed += 1
+print(f"Formatados {{files_processed}} arquivos com sucesso!")
+"""
+            try:
+                subprocess.run([
+                    "uv", "run", "--with", "boto3", "python", "-c", s3_clean_script
+                ], check=True)
+                print("[S3] Formatação concluída!")
+            except Exception as s3_err:
+                print(f"⚠️ Aviso ao formatar arquivos S3: {s3_err}")
+                
         finally:
-            # Cleanup temp file and job
-            if temp_job_path.exists():
-                temp_job_path.unlink()
-            print("[K8s] Removendo Job do simulador...")
-            subprocess.run(["kubectl", "delete", "job", "load-simulator", "-n", "admin-namespace"], capture_output=True)
+            # Cleanup temp files and jobs
+            for temp_path in temp_paths:
+                if temp_path.exists():
+                    temp_path.unlink()
+            for job_name in job_names:
+                print(f"[K8s] Removendo Job {job_name}...")
+                subprocess.run(["kubectl", "delete", "job", job_name, "-n", "admin-namespace"], capture_output=True)
 
     except Exception as e:
         print(f"\n❌ [CRÍTICO] Falha na orquestração: {e}")

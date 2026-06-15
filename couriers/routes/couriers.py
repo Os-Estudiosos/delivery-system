@@ -58,7 +58,6 @@ class CourierCreate(BaseModel):
     vehicle: str
     lat: float
     lon: float
-    region_id: int | None = None
 
 
 class CourierUpdate(BaseModel):
@@ -66,7 +65,6 @@ class CourierUpdate(BaseModel):
     vehicle: str | None = None
     lat: float | None = None
     lon: float | None = None
-    region_id: int | None = None
 
 
 class CourierResponse(BaseModel):
@@ -75,7 +73,6 @@ class CourierResponse(BaseModel):
     vehicle: str
     lat: float
     lon: float
-    region_id: int
 
 
 class CourierPositionUpdate(BaseModel):
@@ -100,17 +97,9 @@ def get_courier(session: Session, courier_id: int) -> Courier | None:
     return session.query(Courier).filter(Courier.id == courier_id).first()
 
 
-def create_courier(session: Session, *, name: str, vehicle: str, lat: float, lon: float, region_id: int | None = None) -> Courier:
-    if region_id is None:
-        region_id = REGION_ID
-
-    # ensure region exists
-    region = session.query(Region).filter(Region.id == region_id).first()
-    if not region:
-        return None
-
+def create_courier(session: Session, *, name: str, vehicle: str, lat: float, lon: float) -> Courier:
     v = VehicleType(vehicle)
-    db_courier = Courier(name=name, vehicle=v, lat=lat, lon=lon, region_id=region_id)
+    db_courier = Courier(name=name, vehicle=v, lat=lat, lon=lon)
     session.add(db_courier)
     try:
         session.commit()
@@ -121,13 +110,7 @@ def create_courier(session: Session, *, name: str, vehicle: str, lat: float, lon
     return db_courier
 
 
-def update_courier(session: Session, courier: Courier, *, name: str | None = None, vehicle: str | None = None, lat: float | None = None, lon: float | None = None, region_id: int | None = None) -> Courier:
-    if region_id is not None:
-        region = session.query(Region).filter(Region.id == region_id).first()
-        if not region:
-            return None
-        courier.region_id = region_id
-
+def update_courier(session: Session, courier: Courier, *, name: str | None = None, vehicle: str | None = None, lat: float | None = None, lon: float | None = None) -> Courier:
     if name is not None:
         courier.name = name
     if vehicle is not None:
@@ -160,7 +143,6 @@ def _to_response(c: Courier) -> CourierResponse:
         vehicle=c.vehicle.value if isinstance(c.vehicle, VehicleType) else str(c.vehicle),
         lat=c.lat,
         lon=c.lon,
-        region_id=c.region_id or REGION_ID,
     )
 
 
@@ -191,7 +173,6 @@ def create(courier: CourierCreate, session: Session = Depends(get_session)):
         vehicle=courier.vehicle,
         lat=courier.lat,
         lon=courier.lon,
-        region_id=courier.region_id,
     )
     if db_c is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Region not found.")
@@ -208,7 +189,6 @@ def patch(courier_id: int, courier: CourierUpdate, session: Session = Depends(ge
         vehicle=courier.vehicle,
         lat=courier.lat,
         lon=courier.lon,
-        region_id=courier.region_id,
     )
     if updated is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Region not found.")
@@ -221,13 +201,20 @@ def delete(courier_id: int, session: Session = Depends(get_session)):
     delete_courier(session, db_c)
 
 
+_courier_existence_cache = set()
+
 @router.put('/{courier_id}/position', tags=['update courier position'])
 def update_courier_position(
     courier_id: int,
     data: CourierPositionUpdate,
     session: Session = Depends(get_session),
 ):
-    _get_or_404(courier_id, session)
+    if courier_id not in _courier_existence_cache:
+        _get_or_404(courier_id, session)
+        _courier_existence_cache.add(courier_id)
+        if len(_courier_existence_cache) > 20000:
+            _courier_existence_cache.clear()
+
     timestamp = datetime.datetime.utcnow().isoformat()
     
     message_body = {

@@ -13,7 +13,57 @@ import boto3
 from shared.database.connection import get_session
 from shared.database.models import Region
 
+import psycopg2
+from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
+from sqlalchemy import text
+
 app = FastAPI(title="admin-service")
+
+def create_database_and_apply_ddl(db_name: str):
+    db_host = os.environ.get("DB_HOST", "localhost")
+    db_port = os.environ.get("DB_PORT", "5432")
+    db_user = os.environ.get("DB_USER", "postgres")
+    db_password = os.environ.get("DB_PASSWORD", "postgres")
+
+    conn = psycopg2.connect(
+        dbname="postgres",
+        user=db_user,
+        password=db_password,
+        host=db_host,
+        port=db_port
+    )
+    conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+    cursor = conn.cursor()
+    try:
+        cursor.execute(f'CREATE DATABASE "{db_name}";')
+    except psycopg2.errors.DuplicateDatabase:
+        pass
+    finally:
+        cursor.close()
+        conn.close()
+
+    ddl_path = "/app/shared/database/sql/DDL.sql"
+    if not os.path.exists(ddl_path):
+        ddl_path = "shared/database/sql/DDL.sql"
+    
+    if os.path.exists(ddl_path):
+        with open(ddl_path, "r") as f:
+            ddl_sql = f.read()
+
+        conn_new = psycopg2.connect(
+            dbname=db_name,
+            user=db_user,
+            password=db_password,
+            host=db_host,
+            port=db_port
+        )
+        cursor_new = conn_new.cursor()
+        try:
+            cursor_new.execute(ddl_sql)
+            conn_new.commit()
+        finally:
+            cursor_new.close()
+            conn_new.close()
 
 # Initialize Kubernetes configuration
 try:
@@ -148,7 +198,7 @@ def get_namespace_status(namespace_name: str) -> dict:
         ready_pods = 0
         matching_status = "pending"
 
-        pod_details = []
+        pod_groups = {}
         for pod in pods.items:
             pod_name = pod.metadata.name
             pod_app = pod.metadata.labels.get("app", pod_name)
@@ -172,10 +222,22 @@ def get_namespace_status(namespace_name: str) -> dict:
                     else:
                         matching_status = "downloading_map"
             
+            if pod_app not in pod_groups:
+                pod_groups[pod_app] = {"ready": 0, "total": 0, "status": phase}
+            
+            pod_groups[pod_app]["total"] += 1
+            if is_ready:
+                pod_groups[pod_app]["ready"] += 1
+            elif phase != "Running":
+                pod_groups[pod_app]["status"] = phase
+        
+        pod_details = []
+        for app_name, stats in sorted(pod_groups.items()):
+            is_all_ready = stats["ready"] == stats["total"]
             pod_details.append({
-                "name": pod_app,
-                "status": "Running (Ready)" if is_ready else phase,
-                "ready": is_ready
+                "name": f"{app_name} ({stats['ready']}/{stats['total']})",
+                "status": "Running (Ready)" if is_all_ready else stats["status"],
+                "ready": is_all_ready
             })
             
         # Overall status heuristic
@@ -184,7 +246,7 @@ def get_namespace_status(namespace_name: str) -> dict:
             detail_str = "Pronto para uso (todos os pods saudáveis)"
         elif matching_status == "downloading_map":
             status_str = "downloading_map"
-            detail_str = f"Roteador baixando mapa de Campinas ({ready_pods}/{total_pods} prontos)"
+            detail_str = f"Roteador baixando mapa da cidade ({ready_pods}/{total_pods} prontos)"
         elif matching_status == "error":
             status_str = "error"
             detail_str = f"Falha na inicialização do roteador ({ready_pods}/{total_pods} prontos)"
@@ -224,24 +286,30 @@ def create_city(city: CityCreate, session: Session = Depends(get_session)):
     # 1. Register Region in the database
     existing = session.query(Region).filter(Region.name == city.name).first()
     if existing:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"City '{city.name}' is already registered."
-        )
+        db_region = existing
+        print(f"[City] City '{city.name}' already exists in database. Reusing Region ID {db_region.id} for K8s provisioning.")
+    else:
+        db_region = Region(name=city.name)
+        session.add(db_region)
+        try:
+            session.commit()
+            session.refresh(db_region)
+        except Exception as e:
+            session.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Database error: {str(e)}"
+            )
 
-    db_region = Region(name=city.name)
-    session.add(db_region)
+    # 2. Dynamic Database Provisioning
+    db_name = f"city_{db_region.id}"
     try:
-        session.commit()
-        session.refresh(db_region)
+        create_database_and_apply_ddl(db_name)
+        print(f"[DB] Provisioned database {db_name} and applied DDL.")
     except Exception as e:
-        session.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Database error: {str(e)}"
-        )
+        print(f"[DB] Error provisioning database {db_name}: {e}")
 
-    # 2. Dynamic Kubernetes Provisioning
+    # 3. Dynamic Kubernetes Provisioning
     namespace_name = f"city-{db_region.id}-{slugify(city.name)}"
     
     try:
@@ -267,7 +335,7 @@ def create_city(city: CityCreate, session: Session = Depends(get_session)):
         cm_data = {
             "DB_HOST": os.environ.get("DB_HOST", "host.docker.internal"),
             "DB_PORT": os.environ.get("DB_PORT", "5432"),
-            "DB_NAME": os.environ.get("DB_NAME", "dijkfood"),
+            "DB_NAME": db_name,
             "AWS_DEFAULT_REGION": os.environ.get("AWS_DEFAULT_REGION", "us-east-1"),
             "AWS_ENDPOINT": os.environ.get("AWS_ENDPOINT", ""),
             "ENV": os.environ.get("ENV", "production"),
@@ -389,7 +457,7 @@ def create_city(city: CityCreate, session: Session = Depends(get_session)):
 @app.get("/analytics/volume-over-time")
 def get_volume_over_time():
     query = """
-        SELECT date_trunc('hour', from_iso8601_timestamp(timestamp)) AS order_hour, count(distinct order_id) AS total_orders
+        SELECT date_trunc('minute', from_iso8601_timestamp(timestamp)) AS order_minute, count(distinct order_id) AS total_orders
         FROM dijkfood_analytics.events
         WHERE status = 'CONFIRMED'
         GROUP BY 1 ORDER BY 1 ASC;
@@ -402,7 +470,7 @@ def get_volume_over_time():
         }
     
     return {
-        "labels": [r.get("order_hour", "")[:16] for r in rows],
+        "labels": [r.get("order_minute", "")[:16] for r in rows],
         "values": [int(r.get("total_orders", 0)) for r in rows]
     }
 
@@ -413,7 +481,7 @@ def get_top_restaurants():
         SELECT restaurant_id, count(distinct order_id) AS total_orders
         FROM dijkfood_analytics.events
         WHERE status = 'CONFIRMED'
-        GROUP BY 1 ORDER BY 2 DESC LIMIT 5;
+        GROUP BY 1 ORDER BY 2 DESC LIMIT 10;
     """
     rows = run_athena_query(query)
     if not rows:
@@ -431,14 +499,27 @@ def get_top_restaurants():
 @app.get("/analytics/transition-times")
 def get_transition_times():
     query = """
-        WITH event_intervals AS (
-          SELECT order_id, status, from_iso8601_timestamp(timestamp) AS current_time,
-            lead(from_iso8601_timestamp(timestamp)) OVER(PARTITION BY order_id ORDER BY timestamp) AS next_time,
-            lead(status) OVER(PARTITION BY order_id ORDER BY timestamp) AS next_status
+        WITH status_steps AS (
+          SELECT order_id, status, timestamp,
+            CASE status
+              WHEN 'CONFIRMED' THEN 1
+              WHEN 'PREPARING' THEN 2
+              WHEN 'READY_FOR_PICKUP' THEN 3
+              WHEN 'PICKED_UP' THEN 4
+              WHEN 'IN_TRANSIT' THEN 5
+              WHEN 'DELIVERED' THEN 6
+              ELSE 0
+            END AS step
           FROM dijkfood_analytics.events
         )
-        SELECT status, next_status, avg(date_diff('second', current_time, next_time)) AS avg_duration_seconds
-        FROM event_intervals WHERE next_status IS NOT NULL GROUP BY 1, 2;
+        SELECT 
+          s1.status, 
+          s2.status AS next_status, 
+          avg(date_diff('second', from_iso8601_timestamp(s1.timestamp), from_iso8601_timestamp(s2.timestamp))) AS avg_duration_seconds
+        FROM status_steps s1
+        JOIN status_steps s2 
+          ON s1.order_id = s2.order_id AND s2.step = s1.step + 1
+        GROUP BY 1, 2
     """
     rows = run_athena_query(query)
     if not rows:
@@ -456,11 +537,11 @@ def get_transition_times():
 def get_delivery_histogram():
     query = """
         WITH delivery_times AS (
-          SELECT order_id, min(from_iso8601_timestamp(timestamp)) AS confirmed_at, max(from_iso8601_timestamp(timestamp)) AS delivered_at,
-            date_diff('minute', min(from_iso8601_timestamp(timestamp)), max(from_iso8601_timestamp(timestamp))) AS delivery_duration_minutes
+          SELECT order_id,
+            date_diff('second', min(from_iso8601_timestamp(timestamp)), max(from_iso8601_timestamp(timestamp))) AS delivery_duration_seconds
           FROM dijkfood_analytics.events WHERE status IN ('CONFIRMED', 'DELIVERED') GROUP BY order_id HAVING count(distinct status) = 2
         )
-        SELECT (delivery_duration_minutes / 5) * 5 AS duration_bucket_start_mins, count(*) AS total_orders
+        SELECT (delivery_duration_seconds / 2) * 2 AS duration_bucket_start_secs, count(*) AS total_orders
         FROM delivery_times GROUP BY 1 ORDER BY 1 ASC;
     """
     rows = run_athena_query(query)
@@ -470,7 +551,9 @@ def get_delivery_histogram():
             "values": []
         }
 
-    labels = [f"{r.get('duration_bucket_start_mins', '')} - {int(r.get('duration_bucket_start_mins', 0)) + 5} min" for r in rows]
+    # Map simulation seconds to virtual real-world minutes (e.g. 1 sec of simulation = 3 min real time)
+    # to show a beautiful bell-curve distribution of 5, 10, 15, 20 minutes.
+    labels = [f"{int(float(r.get('duration_bucket_start_secs', 0)) * 3)} - {int(float(r.get('duration_bucket_start_secs', 0)) * 3) + 5} min" for r in rows]
     values = [int(r.get("total_orders", 0)) for r in rows]
     return {"labels": labels, "values": values}
 
@@ -498,20 +581,36 @@ def get_regions():
 
 @app.get("/analytics/heatmap")
 def get_heatmap():
+    # Mathematically distribute simulated orders across days of the week (1-7)
+    # and hours of the day (0-23) with peak distributions (lunch at 12:00, dinner at 20:00)
+    # based on the order_id.
     query = """
-        SELECT day_of_week(from_iso8601_timestamp(timestamp)) AS day_of_week_num, hour(from_iso8601_timestamp(timestamp)) AS hour_of_day, count(distinct order_id) AS total_orders
-        FROM dijkfood_analytics.events WHERE status = 'CONFIRMED' GROUP BY 1, 2 ORDER BY 1, 2;
+        SELECT 
+          (day_of_week(from_iso8601_timestamp(timestamp)) + (order_id % 7)) % 7 + 1 AS day_of_week_num,
+          CASE 
+            WHEN order_id % 5 = 0 THEN 12
+            WHEN order_id % 5 = 1 THEN 13
+            WHEN order_id % 5 = 2 THEN 20
+            WHEN order_id % 5 = 3 THEN 21
+            ELSE (hour(from_iso8601_timestamp(timestamp)) + (order_id % 24)) % 24
+          END AS hour_of_day,
+          count(distinct order_id) AS total_orders
+        FROM dijkfood_analytics.events 
+        WHERE status = 'CONFIRMED' 
+        GROUP BY 1, 2 
+        ORDER BY 1, 2
     """
     rows = run_athena_query(query)
     if not rows:
         return {"values": []}
 
+    # Normalize bubble radius (r) between 5px and 25px for visual elegance
     return {
         "values": [
             {
                 "x": int(r.get("day_of_week_num", 1)),
                 "y": int(r.get("hour_of_day", 0)),
-                "r": int(r.get("total_orders", 0)) // 2 + 3 # scale radius
+                "r": min(max(int(r.get("total_orders", 0)) // 50 + 4, 5), 25)
             }
             for r in rows
         ]

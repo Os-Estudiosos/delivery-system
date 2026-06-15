@@ -36,7 +36,7 @@ def get_s3_client():
 
 def get_or_download_graph():
     # Normalize city name to create a safe cache file name
-    safe_city_name = CITY_NAME.lower().replace(" ", "_").replace(",", "_")
+    safe_city_name = CITY_NAME.lower().replace(" ", "_").replace(",", "_") + "_v2"
     graph_cache_path = Path(f"cache/{safe_city_name}.graphml")
     graph_cache_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -110,7 +110,6 @@ def ready():
 
 class MatchRequest(BaseModel):
     restaurant_id: int
-    region_id: int
 
 @app.post("/match")
 def match_courier(req: MatchRequest, session: Session = Depends(get_session)):
@@ -130,10 +129,8 @@ def match_courier(req: MatchRequest, session: Session = Depends(get_session)):
         )
     )
 
-    # Fetch only couriers in the region who do NOT have any active delivery
+    # Fetch only couriers who do NOT have any active delivery
     couriers = session.query(Courier).filter(
-        Courier.region_id == req.region_id
-    ).filter(
         ~active_delivery_exists
     ).all()
 

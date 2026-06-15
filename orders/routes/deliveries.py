@@ -35,17 +35,28 @@ if ENV == "local" and AWS_ENDPOINT:
 sqs_client = boto3.client("sqs", **sqs_kwargs)
 
 
+_cached_analytics_queue_url = None
+
+
 def _get_analytics_queue_url():
+    global _cached_analytics_queue_url
+    if _cached_analytics_queue_url:
+        return _cached_analytics_queue_url
+
     queue_url = os.environ.get("ANALYTICS_SQS_QUEUE_URL")
     if queue_url:
+        _cached_analytics_queue_url = queue_url
         return queue_url
     try:
         resp = sqs_client.get_queue_url(QueueName="analytics-events")
-        return resp["QueueUrl"]
+        _cached_analytics_queue_url = resp["QueueUrl"]
+        return _cached_analytics_queue_url
     except Exception:
         if AWS_ENDPOINT:
-            return f"{AWS_ENDPOINT}/000000000000/analytics-events"
+            _cached_analytics_queue_url = f"{AWS_ENDPOINT}/000000000000/analytics-events"
+            return _cached_analytics_queue_url
         return ""
+
 
 
 def _publish_analytics_event(order_id: int, status: str, restaurant_id: int, region_id: int):
@@ -184,9 +195,9 @@ def _courier_has_active_delivery(courier_id: int, session: Session, exclude_deli
     return False
 
 
-def _call_matching_service(restaurant_id: int, region_id: int) -> int | None:
+def _call_matching_service(restaurant_id: int) -> int | None:
     url = f"{MATCHING_ENDPOINT}/match"
-    payload = {"restaurant_id": restaurant_id, "region_id": region_id}
+    payload = {"restaurant_id": restaurant_id}
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
         url,
@@ -303,18 +314,12 @@ def update_delivery_status(delivery_id: int, payload: DeliveryStatusCreate, sess
     if payload.status == OrderStatus.READY_FOR_PICKUP:
         # Extract fields needed for matching call
         restaurant_id = db_delivery.order.restaurant_id
-        region_id = db_delivery.order.restaurant.region_id
+        region_id = int(os.environ.get("REGION_ID", "1"))
         
-        # Close the connection back to the pool before call
-        session.close()
+        # Call matching service
+        best_courier_id = _call_matching_service(restaurant_id)
         
-        # Call matching service (connection is free)
-        best_courier_id = _call_matching_service(restaurant_id, region_id)
-        
-        # Re-open session
-        new_session = SessionLocal()
         try:
-            db_delivery = new_session.query(Delivery).filter(Delivery.id == delivery_id).first()
             if best_courier_id:
                 db_delivery.courier_id = best_courier_id
             
@@ -323,23 +328,21 @@ def update_delivery_status(delivery_id: int, payload: DeliveryStatusCreate, sess
                 updated_at=datetime.datetime.now(datetime.timezone.utc),
                 delivery=db_delivery,
             )
-            new_session.add(db_event)
-            new_session.commit()
-            new_session.refresh(db_event)
+            session.add(db_event)
+            session.commit()
+            session.refresh(db_event)
             
             # SQS publishing
             _publish_analytics_event(
                 order_id=db_delivery.order.id,
                 status=payload.status.value,
                 restaurant_id=db_delivery.order.restaurant_id,
-                region_id=db_delivery.order.restaurant.region_id
+                region_id=region_id
             )
             return _to_delivery_status_response(db_event)
         except Exception as e:
-            new_session.rollback()
+            session.rollback()
             raise e
-        finally:
-            new_session.close()
 
     db_event = Event(
         status=payload.status,
@@ -356,7 +359,7 @@ def update_delivery_status(delivery_id: int, payload: DeliveryStatusCreate, sess
             order_id=db_delivery.order.id,
             status=payload.status.value,
             restaurant_id=db_delivery.order.restaurant_id,
-            region_id=db_delivery.order.restaurant.region_id
+            region_id=int(os.environ.get("REGION_ID", "1"))
         )
     except IntegrityError:
         session.rollback()

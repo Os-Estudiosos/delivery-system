@@ -1,0 +1,1820 @@
+{
+  "version": 4,
+  "terraform_version": "1.15.6",
+  "serial": 54,
+  "lineage": "f4d3b04b-2a4c-041a-0671-e0e714e5afd9",
+  "outputs": {
+    "account_id": {
+      "value": "045437334962",
+      "type": "string"
+    },
+    "assets_bucket_name": {
+      "value": "dijkfood-assets-b97c50c7",
+      "type": "string"
+    },
+    "aws_region": {
+      "value": "us-east-1",
+      "type": "string"
+    },
+    "datalake_bucket_name": {
+      "value": "dijkfood-datalake-b97c50c7",
+      "type": "string"
+    },
+    "eks_cluster_name": {
+      "value": "dijkfood",
+      "type": "string"
+    },
+    "rds_address": {
+      "value": "dijkfood.ctra4ujpjrsz.us-east-1.rds.amazonaws.com",
+      "type": "string"
+    }
+  },
+  "resources": [
+    {
+      "mode": "data",
+      "type": "aws_caller_identity",
+      "name": "current",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "account_id": "045437334962",
+            "arn": "arn:aws:sts::045437334962:assumed-role/voclabs/user4496328=Thalis",
+            "id": "045437334962",
+            "user_id": "AROAQVFCGWWZFC2OLSG6Y:user4496328=Thalis"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_ecr_repository",
+      "name": "repos",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "index_key": "admin",
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:ecr:us-east-1:045437334962:repository/delivery-system/admin",
+            "encryption_configuration": [
+              {
+                "encryption_type": "AES256",
+                "kms_key": ""
+              }
+            ],
+            "force_delete": true,
+            "id": "delivery-system/admin",
+            "image_scanning_configuration": [
+              {
+                "scan_on_push": true
+              }
+            ],
+            "image_tag_mutability": "MUTABLE",
+            "name": "delivery-system/admin",
+            "registry_id": "045437334962",
+            "repository_url": "045437334962.dkr.ecr.us-east-1.amazonaws.com/delivery-system/admin",
+            "tags": {
+              "Project": "dijkfood"
+            },
+            "tags_all": {
+              "Project": "dijkfood"
+            },
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiZGVsZXRlIjoxMjAwMDAwMDAwMDAwfX0="
+        },
+        {
+          "index_key": "clients",
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:ecr:us-east-1:045437334962:repository/delivery-system/clients",
+            "encryption_configuration": [
+              {
+                "encryption_type": "AES256",
+                "kms_key": ""
+              }
+            ],
+            "force_delete": true,
+            "id": "delivery-system/clients",
+            "image_scanning_configuration": [
+              {
+                "scan_on_push": true
+              }
+            ],
+            "image_tag_mutability": "MUTABLE",
+            "name": "delivery-system/clients",
+            "registry_id": "045437334962",
+            "repository_url": "045437334962.dkr.ecr.us-east-1.amazonaws.com/delivery-system/clients",
+            "tags": {
+              "Project": "dijkfood"
+            },
+            "tags_all": {
+              "Project": "dijkfood"
+            },
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiZGVsZXRlIjoxMjAwMDAwMDAwMDAwfX0="
+        },
+        {
+          "index_key": "couriers",
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:ecr:us-east-1:045437334962:repository/delivery-system/couriers",
+            "encryption_configuration": [
+              {
+                "encryption_type": "AES256",
+                "kms_key": ""
+              }
+            ],
+            "force_delete": true,
+            "id": "delivery-system/couriers",
+            "image_scanning_configuration": [
+              {
+                "scan_on_push": true
+              }
+            ],
+            "image_tag_mutability": "MUTABLE",
+            "name": "delivery-system/couriers",
+            "registry_id": "045437334962",
+            "repository_url": "045437334962.dkr.ecr.us-east-1.amazonaws.com/delivery-system/couriers",
+            "tags": {
+              "Project": "dijkfood"
+            },
+            "tags_all": {
+              "Project": "dijkfood"
+            },
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiZGVsZXRlIjoxMjAwMDAwMDAwMDAwfX0="
+        },
+        {
+          "index_key": "matching",
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:ecr:us-east-1:045437334962:repository/delivery-system/matching",
+            "encryption_configuration": [
+              {
+                "encryption_type": "AES256",
+                "kms_key": ""
+              }
+            ],
+            "force_delete": true,
+            "id": "delivery-system/matching",
+            "image_scanning_configuration": [
+              {
+                "scan_on_push": true
+              }
+            ],
+            "image_tag_mutability": "MUTABLE",
+            "name": "delivery-system/matching",
+            "registry_id": "045437334962",
+            "repository_url": "045437334962.dkr.ecr.us-east-1.amazonaws.com/delivery-system/matching",
+            "tags": {
+              "Project": "dijkfood"
+            },
+            "tags_all": {
+              "Project": "dijkfood"
+            },
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiZGVsZXRlIjoxMjAwMDAwMDAwMDAwfX0="
+        },
+        {
+          "index_key": "orders",
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:ecr:us-east-1:045437334962:repository/delivery-system/orders",
+            "encryption_configuration": [
+              {
+                "encryption_type": "AES256",
+                "kms_key": ""
+              }
+            ],
+            "force_delete": true,
+            "id": "delivery-system/orders",
+            "image_scanning_configuration": [
+              {
+                "scan_on_push": true
+              }
+            ],
+            "image_tag_mutability": "MUTABLE",
+            "name": "delivery-system/orders",
+            "registry_id": "045437334962",
+            "repository_url": "045437334962.dkr.ecr.us-east-1.amazonaws.com/delivery-system/orders",
+            "tags": {
+              "Project": "dijkfood"
+            },
+            "tags_all": {
+              "Project": "dijkfood"
+            },
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiZGVsZXRlIjoxMjAwMDAwMDAwMDAwfX0="
+        },
+        {
+          "index_key": "positions",
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:ecr:us-east-1:045437334962:repository/delivery-system/positions",
+            "encryption_configuration": [
+              {
+                "encryption_type": "AES256",
+                "kms_key": ""
+              }
+            ],
+            "force_delete": true,
+            "id": "delivery-system/positions",
+            "image_scanning_configuration": [
+              {
+                "scan_on_push": true
+              }
+            ],
+            "image_tag_mutability": "MUTABLE",
+            "name": "delivery-system/positions",
+            "registry_id": "045437334962",
+            "repository_url": "045437334962.dkr.ecr.us-east-1.amazonaws.com/delivery-system/positions",
+            "tags": {
+              "Project": "dijkfood"
+            },
+            "tags_all": {
+              "Project": "dijkfood"
+            },
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiZGVsZXRlIjoxMjAwMDAwMDAwMDAwfX0="
+        },
+        {
+          "index_key": "region",
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:ecr:us-east-1:045437334962:repository/delivery-system/region",
+            "encryption_configuration": [
+              {
+                "encryption_type": "AES256",
+                "kms_key": ""
+              }
+            ],
+            "force_delete": true,
+            "id": "delivery-system/region",
+            "image_scanning_configuration": [
+              {
+                "scan_on_push": true
+              }
+            ],
+            "image_tag_mutability": "MUTABLE",
+            "name": "delivery-system/region",
+            "registry_id": "045437334962",
+            "repository_url": "045437334962.dkr.ecr.us-east-1.amazonaws.com/delivery-system/region",
+            "tags": {
+              "Project": "dijkfood"
+            },
+            "tags_all": {
+              "Project": "dijkfood"
+            },
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiZGVsZXRlIjoxMjAwMDAwMDAwMDAwfX0="
+        },
+        {
+          "index_key": "restaurants",
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:ecr:us-east-1:045437334962:repository/delivery-system/restaurants",
+            "encryption_configuration": [
+              {
+                "encryption_type": "AES256",
+                "kms_key": ""
+              }
+            ],
+            "force_delete": true,
+            "id": "delivery-system/restaurants",
+            "image_scanning_configuration": [
+              {
+                "scan_on_push": true
+              }
+            ],
+            "image_tag_mutability": "MUTABLE",
+            "name": "delivery-system/restaurants",
+            "registry_id": "045437334962",
+            "repository_url": "045437334962.dkr.ecr.us-east-1.amazonaws.com/delivery-system/restaurants",
+            "tags": {
+              "Project": "dijkfood"
+            },
+            "tags_all": {
+              "Project": "dijkfood"
+            },
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiZGVsZXRlIjoxMjAwMDAwMDAwMDAwfX0="
+        },
+        {
+          "index_key": "simulator",
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:ecr:us-east-1:045437334962:repository/delivery-system/simulator",
+            "encryption_configuration": [
+              {
+                "encryption_type": "AES256",
+                "kms_key": ""
+              }
+            ],
+            "force_delete": true,
+            "id": "delivery-system/simulator",
+            "image_scanning_configuration": [
+              {
+                "scan_on_push": true
+              }
+            ],
+            "image_tag_mutability": "MUTABLE",
+            "name": "delivery-system/simulator",
+            "registry_id": "045437334962",
+            "repository_url": "045437334962.dkr.ecr.us-east-1.amazonaws.com/delivery-system/simulator",
+            "tags": {
+              "Project": "dijkfood"
+            },
+            "tags_all": {
+              "Project": "dijkfood"
+            },
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiZGVsZXRlIjoxMjAwMDAwMDAwMDAwfX0="
+        }
+      ]
+    },
+    {
+      "module": "module.analytics",
+      "mode": "data",
+      "type": "aws_caller_identity",
+      "name": "current",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "account_id": "045437334962",
+            "arn": "arn:aws:sts::045437334962:assumed-role/voclabs/user4496328=Thalis",
+            "id": "045437334962",
+            "user_id": "AROAQVFCGWWZFC2OLSG6Y:user4496328=Thalis"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0
+        }
+      ]
+    },
+    {
+      "module": "module.analytics",
+      "mode": "managed",
+      "type": "aws_athena_workgroup",
+      "name": "dijkfood",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:athena:us-east-1:045437334962:workgroup/dijkfood",
+            "configuration": [
+              {
+                "bytes_scanned_cutoff_per_query": 0,
+                "enforce_workgroup_configuration": true,
+                "engine_version": [
+                  {
+                    "effective_engine_version": "Athena engine version 3",
+                    "selected_engine_version": "AUTO"
+                  }
+                ],
+                "execution_role": "",
+                "publish_cloudwatch_metrics_enabled": true,
+                "requester_pays_enabled": false,
+                "result_configuration": [
+                  {
+                    "acl_configuration": [],
+                    "encryption_configuration": [],
+                    "expected_bucket_owner": "",
+                    "output_location": "s3://dijkfood-datalake-b97c50c7/athena-results/"
+                  }
+                ]
+              }
+            ],
+            "description": "",
+            "force_destroy": false,
+            "id": "dijkfood",
+            "name": "dijkfood",
+            "state": "ENABLED",
+            "tags": {
+              "Project": "dijkfood"
+            },
+            "tags_all": {
+              "Project": "dijkfood"
+            }
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "module.s3.aws_s3_bucket.datalake",
+            "module.s3.random_id.bucket_suffix"
+          ]
+        }
+      ]
+    },
+    {
+      "module": "module.analytics",
+      "mode": "managed",
+      "type": "aws_glue_catalog_database",
+      "name": "dijkfood",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:glue:us-east-1:045437334962:database/dijkfood_analytics",
+            "catalog_id": "045437334962",
+            "create_table_default_permission": [
+              {
+                "permissions": [
+                  "ALL"
+                ],
+                "principal": [
+                  {
+                    "data_lake_principal_identifier": "IAM_ALLOWED_PRINCIPALS"
+                  }
+                ]
+              }
+            ],
+            "description": "",
+            "federated_database": [],
+            "id": "045437334962:dijkfood_analytics",
+            "location_uri": "",
+            "name": "dijkfood_analytics",
+            "parameters": {},
+            "tags": {},
+            "tags_all": {},
+            "target_database": []
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA=="
+        }
+      ]
+    },
+    {
+      "module": "module.analytics",
+      "mode": "managed",
+      "type": "aws_glue_catalog_table",
+      "name": "events",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:glue:us-east-1:045437334962:table/dijkfood_analytics/events",
+            "catalog_id": "045437334962",
+            "database_name": "dijkfood_analytics",
+            "description": "",
+            "id": "045437334962:dijkfood_analytics:events",
+            "name": "events",
+            "open_table_format_input": [],
+            "owner": "",
+            "parameters": {
+              "classification": "json",
+              "projection.day.digits": "2",
+              "projection.day.range": "01,31",
+              "projection.day.type": "integer",
+              "projection.enabled": "true",
+              "projection.month.digits": "2",
+              "projection.month.range": "01,12",
+              "projection.month.type": "integer",
+              "projection.year.digits": "4",
+              "projection.year.range": "2023,2030",
+              "projection.year.type": "integer",
+              "storage.location.template": "s3://dijkfood-datalake-b97c50c7/events/year=${year}/month=${month}/day=${day}/"
+            },
+            "partition_index": [],
+            "partition_keys": [
+              {
+                "comment": "",
+                "name": "year",
+                "type": "string"
+              },
+              {
+                "comment": "",
+                "name": "month",
+                "type": "string"
+              },
+              {
+                "comment": "",
+                "name": "day",
+                "type": "string"
+              }
+            ],
+            "retention": 0,
+            "storage_descriptor": [
+              {
+                "additional_locations": [],
+                "bucket_columns": [],
+                "columns": [
+                  {
+                    "comment": "",
+                    "name": "order_id",
+                    "parameters": {},
+                    "type": "int"
+                  },
+                  {
+                    "comment": "",
+                    "name": "status",
+                    "parameters": {},
+                    "type": "string"
+                  },
+                  {
+                    "comment": "",
+                    "name": "restaurant_id",
+                    "parameters": {},
+                    "type": "int"
+                  },
+                  {
+                    "comment": "",
+                    "name": "region_id",
+                    "parameters": {},
+                    "type": "int"
+                  },
+                  {
+                    "comment": "",
+                    "name": "timestamp",
+                    "parameters": {},
+                    "type": "string"
+                  }
+                ],
+                "compressed": false,
+                "input_format": "org.apache.hadoop.mapred.TextInputFormat",
+                "location": "s3://dijkfood-datalake-b97c50c7/events/",
+                "number_of_buckets": 0,
+                "output_format": "org.apache.hadoop.hive.ql.io.IgnoreKeyTextOutputFormat",
+                "parameters": {},
+                "schema_reference": [],
+                "ser_de_info": [
+                  {
+                    "name": "json",
+                    "parameters": {
+                      "ignore.malformed.json": "true"
+                    },
+                    "serialization_library": "org.openx.data.jsonserde.JsonSerDe"
+                  }
+                ],
+                "skewed_info": [],
+                "sort_columns": [],
+                "stored_as_sub_directories": false
+              }
+            ],
+            "table_type": "EXTERNAL_TABLE",
+            "target_table": [],
+            "view_expanded_text": "",
+            "view_original_text": ""
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "module.analytics.aws_glue_catalog_database.dijkfood",
+            "module.s3.aws_s3_bucket.datalake",
+            "module.s3.random_id.bucket_suffix"
+          ]
+        }
+      ]
+    },
+    {
+      "module": "module.analytics",
+      "mode": "managed",
+      "type": "aws_kinesis_firehose_delivery_stream",
+      "name": "extended_s3_stream",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 1,
+          "attributes": {
+            "arn": "arn:aws:firehose:us-east-1:045437334962:deliverystream/dijkfood-analytics-stream",
+            "destination": "extended_s3",
+            "destination_id": "destinationId-000000000001",
+            "elasticsearch_configuration": [],
+            "extended_s3_configuration": [
+              {
+                "bucket_arn": "arn:aws:s3:::dijkfood-datalake-b97c50c7",
+                "buffering_interval": 300,
+                "buffering_size": 5,
+                "cloudwatch_logging_options": [
+                  {
+                    "enabled": false,
+                    "log_group_name": "",
+                    "log_stream_name": ""
+                  }
+                ],
+                "compression_format": "UNCOMPRESSED",
+                "custom_time_zone": "UTC",
+                "data_format_conversion_configuration": [],
+                "dynamic_partitioning_configuration": [],
+                "error_output_prefix": "errors/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/!{firehose:error-output-type}/",
+                "file_extension": "",
+                "kms_key_arn": "",
+                "prefix": "events/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/",
+                "processing_configuration": [
+                  {
+                    "enabled": false,
+                    "processors": []
+                  }
+                ],
+                "role_arn": "arn:aws:iam::045437334962:role/LabRole",
+                "s3_backup_configuration": [],
+                "s3_backup_mode": "Disabled"
+              }
+            ],
+            "http_endpoint_configuration": [],
+            "iceberg_configuration": [],
+            "id": "arn:aws:firehose:us-east-1:045437334962:deliverystream/dijkfood-analytics-stream",
+            "kinesis_source_configuration": [],
+            "msk_source_configuration": [],
+            "name": "dijkfood-analytics-stream",
+            "opensearch_configuration": [],
+            "opensearchserverless_configuration": [],
+            "redshift_configuration": [],
+            "server_side_encryption": [
+              {
+                "enabled": false,
+                "key_arn": "",
+                "key_type": "AWS_OWNED_CMK"
+              }
+            ],
+            "snowflake_configuration": [],
+            "splunk_configuration": [],
+            "tags": {
+              "Project": "dijkfood"
+            },
+            "tags_all": {
+              "Project": "dijkfood"
+            },
+            "timeouts": null,
+            "version_id": "1"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxODAwMDAwMDAwMDAwLCJkZWxldGUiOjE4MDAwMDAwMDAwMDAsInVwZGF0ZSI6NjAwMDAwMDAwMDAwfSwic2NoZW1hX3ZlcnNpb24iOiIxIn0=",
+          "dependencies": [
+            "module.analytics.data.aws_caller_identity.current",
+            "module.s3.aws_s3_bucket.datalake",
+            "module.s3.random_id.bucket_suffix"
+          ]
+        }
+      ]
+    },
+    {
+      "module": "module.analytics",
+      "mode": "managed",
+      "type": "aws_pipes_pipe",
+      "name": "sqs_to_firehose",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:pipes:us-east-1:045437334962:pipe/sqs-to-firehose-pipe",
+            "description": "Managed by Terraform",
+            "desired_state": "RUNNING",
+            "enrichment": "",
+            "enrichment_parameters": [],
+            "id": "sqs-to-firehose-pipe",
+            "kms_key_identifier": "",
+            "log_configuration": [],
+            "name": "sqs-to-firehose-pipe",
+            "name_prefix": "",
+            "role_arn": "arn:aws:iam::045437334962:role/LabRole",
+            "source": "arn:aws:sqs:us-east-1:045437334962:analytics-events",
+            "source_parameters": [
+              {
+                "activemq_broker_parameters": [],
+                "dynamodb_stream_parameters": [],
+                "filter_criteria": [],
+                "kinesis_stream_parameters": [],
+                "managed_streaming_kafka_parameters": [],
+                "rabbitmq_broker_parameters": [],
+                "self_managed_kafka_parameters": [],
+                "sqs_queue_parameters": [
+                  {
+                    "batch_size": 10,
+                    "maximum_batching_window_in_seconds": 0
+                  }
+                ]
+              }
+            ],
+            "tags": {
+              "Project": "dijkfood"
+            },
+            "tags_all": {
+              "Project": "dijkfood"
+            },
+            "target": "arn:aws:firehose:us-east-1:045437334962:deliverystream/dijkfood-analytics-stream",
+            "target_parameters": [
+              {
+                "batch_job_parameters": [],
+                "cloudwatch_logs_parameters": [],
+                "ecs_task_parameters": [],
+                "eventbridge_event_bus_parameters": [],
+                "http_parameters": [],
+                "input_template": "{\"order_id\": \u003c$.body.order_id\u003e, \"status\": \"\u003c$.body.status\u003e\", \"restaurant_id\": \u003c$.body.restaurant_id\u003e, \"region_id\": \u003c$.body.region_id\u003e, \"timestamp\": \"\u003c$.body.timestamp\u003e\"}\n",
+                "kinesis_stream_parameters": [],
+                "lambda_function_parameters": [],
+                "redshift_data_parameters": [],
+                "sagemaker_pipeline_parameters": [],
+                "sqs_queue_parameters": [],
+                "step_function_state_machine_parameters": []
+              }
+            ],
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxODAwMDAwMDAwMDAwLCJkZWxldGUiOjE4MDAwMDAwMDAwMDAsInVwZGF0ZSI6MTgwMDAwMDAwMDAwMH19",
+          "dependencies": [
+            "module.analytics.aws_kinesis_firehose_delivery_stream.extended_s3_stream",
+            "module.analytics.aws_sqs_queue.analytics",
+            "module.analytics.data.aws_caller_identity.current",
+            "module.s3.aws_s3_bucket.datalake",
+            "module.s3.random_id.bucket_suffix"
+          ]
+        }
+      ]
+    },
+    {
+      "module": "module.analytics",
+      "mode": "managed",
+      "type": "aws_sqs_queue",
+      "name": "analytics",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:sqs:us-east-1:045437334962:analytics-events",
+            "content_based_deduplication": false,
+            "deduplication_scope": "",
+            "delay_seconds": 0,
+            "fifo_queue": false,
+            "fifo_throughput_limit": "",
+            "id": "https://sqs.us-east-1.amazonaws.com/045437334962/analytics-events",
+            "kms_data_key_reuse_period_seconds": 300,
+            "kms_master_key_id": "",
+            "max_message_size": 262144,
+            "message_retention_seconds": 86400,
+            "name": "analytics-events",
+            "name_prefix": "",
+            "policy": "",
+            "receive_wait_time_seconds": 10,
+            "redrive_allow_policy": "",
+            "redrive_policy": "",
+            "sqs_managed_sse_enabled": true,
+            "tags": {
+              "Project": "dijkfood"
+            },
+            "tags_all": {
+              "Project": "dijkfood"
+            },
+            "timeouts": null,
+            "url": "https://sqs.us-east-1.amazonaws.com/045437334962/analytics-events",
+            "visibility_timeout_seconds": 30
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxODAwMDAwMDAwMDAsImRlbGV0ZSI6MTgwMDAwMDAwMDAwLCJ1cGRhdGUiOjE4MDAwMDAwMDAwMH19"
+        }
+      ]
+    },
+    {
+      "module": "module.dynamodb",
+      "mode": "managed",
+      "type": "aws_dynamodb_table",
+      "name": "courier_positions",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 1,
+          "attributes": {
+            "arn": "arn:aws:dynamodb:us-east-1:045437334962:table/courier_positions",
+            "attribute": [
+              {
+                "name": "courier_id",
+                "type": "N"
+              },
+              {
+                "name": "delivery_id",
+                "type": "S"
+              },
+              {
+                "name": "timestamp",
+                "type": "S"
+              }
+            ],
+            "billing_mode": "PAY_PER_REQUEST",
+            "deletion_protection_enabled": false,
+            "global_secondary_index": [
+              {
+                "hash_key": "delivery_id",
+                "name": "gsi-delivery",
+                "non_key_attributes": [],
+                "on_demand_throughput": [],
+                "projection_type": "ALL",
+                "range_key": "timestamp",
+                "read_capacity": 0,
+                "write_capacity": 0
+              }
+            ],
+            "hash_key": "courier_id",
+            "id": "courier_positions",
+            "import_table": [],
+            "local_secondary_index": [],
+            "name": "courier_positions",
+            "on_demand_throughput": [],
+            "point_in_time_recovery": [
+              {
+                "enabled": false,
+                "recovery_period_in_days": 0
+              }
+            ],
+            "range_key": "timestamp",
+            "read_capacity": 0,
+            "replica": [],
+            "restore_date_time": null,
+            "restore_source_name": null,
+            "restore_source_table_arn": null,
+            "restore_to_latest_time": null,
+            "server_side_encryption": [],
+            "stream_arn": "",
+            "stream_enabled": false,
+            "stream_label": "",
+            "stream_view_type": "",
+            "table_class": "STANDARD",
+            "tags": {
+              "Project": "dijkfood"
+            },
+            "tags_all": {
+              "Project": "dijkfood"
+            },
+            "timeouts": null,
+            "ttl": [
+              {
+                "attribute_name": "",
+                "enabled": false
+              }
+            ],
+            "write_capacity": 0
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxODAwMDAwMDAwMDAwLCJkZWxldGUiOjYwMDAwMDAwMDAwMCwidXBkYXRlIjozNjAwMDAwMDAwMDAwfSwic2NoZW1hX3ZlcnNpb24iOiIxIn0="
+        }
+      ]
+    },
+    {
+      "module": "module.eks",
+      "mode": "data",
+      "type": "aws_subnets",
+      "name": "eks_compatible",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "filter": [
+              {
+                "name": "availabilityZone",
+                "values": [
+                  "us-east-1a",
+                  "us-east-1b",
+                  "us-east-1c",
+                  "us-east-1d",
+                  "us-east-1f"
+                ]
+              },
+              {
+                "name": "vpc-id",
+                "values": [
+                  "vpc-0d9bff0bbf6b5095e"
+                ]
+              }
+            ],
+            "id": "us-east-1",
+            "ids": [
+              "subnet-09688c559bf8738f4",
+              "subnet-0aa44181f163ac6e7",
+              "subnet-0fe69a795ba3c9681",
+              "subnet-0e229397e033a4097",
+              "subnet-0447b8d0440c4d511"
+            ],
+            "tags": null,
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0
+        }
+      ]
+    },
+    {
+      "module": "module.eks",
+      "mode": "data",
+      "type": "aws_vpc",
+      "name": "default",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:ec2:us-east-1:045437334962:vpc/vpc-0d9bff0bbf6b5095e",
+            "cidr_block": "172.31.0.0/16",
+            "cidr_block_associations": [
+              {
+                "association_id": "vpc-cidr-assoc-0064a7fbf943cbde3",
+                "cidr_block": "172.31.0.0/16",
+                "state": "associated"
+              }
+            ],
+            "default": true,
+            "dhcp_options_id": "dopt-00c8c95b835bb5d54",
+            "enable_dns_hostnames": true,
+            "enable_dns_support": true,
+            "enable_network_address_usage_metrics": false,
+            "filter": null,
+            "id": "vpc-0d9bff0bbf6b5095e",
+            "instance_tenancy": "default",
+            "ipv6_association_id": "",
+            "ipv6_cidr_block": "",
+            "main_route_table_id": "rtb-056df48c561902249",
+            "owner_id": "045437334962",
+            "state": null,
+            "tags": {},
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0
+        }
+      ]
+    },
+    {
+      "module": "module.eks",
+      "mode": "managed",
+      "type": "aws_eks_cluster",
+      "name": "dijkfood",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 1,
+          "attributes": {
+            "access_config": [
+              {
+                "authentication_mode": "CONFIG_MAP",
+                "bootstrap_cluster_creator_admin_permissions": true
+              }
+            ],
+            "arn": "arn:aws:eks:us-east-1:045437334962:cluster/dijkfood",
+            "bootstrap_self_managed_addons": true,
+            "certificate_authority": [
+              {
+                "data": "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURCVENDQWUyZ0F3SUJBZ0lJU0VPQ2dZNmdkTTR3RFFZSktvWklodmNOQVFFTEJRQXdGVEVUTUJFR0ExVUUKQXhNS2EzVmlaWEp1WlhSbGN6QWVGdzB5TmpBMk1UUXlNVEUzTlRKYUZ3MHpOakEyTVRFeU1USXlOVEphTUJVeApFekFSQmdOVkJBTVRDbXQxWW1WeWJtVjBaWE13Z2dFaU1BMEdDU3FHU0liM0RRRUJBUVVBQTRJQkR3QXdnZ0VLCkFvSUJBUUN1bHErYWhBRm45L0NqNVhVSFM2TnRxRU8ydU5WaW1mdk1NbkRLaFpVVldmTVZEVXZwb0JpMENsMGYKSE1lNElaSlg5cFhIVGJab0F2b0NNZUhPcXVGNEJ4dTZDYkw4SmozTTBLY1BsRHNzYW9ILzNRa2JRZTR4WW5jWApTbW4yNSs2N2FHTmdsaHVBTWhONU5kV0RxUk8zMmRqVUN5ZXdISCswVm91L3RXSTQrdDVIazVXTjV3RWRURFY3Cm9LMUNEWUxTcENuTUhhdktxTS8vcmpMV2d6akNsb3J6eWE3Mks5eXY4WHduZkhOaVRsRUFSUnZaTTZxTE1LblMKd1EyMm9YTUNYVnZWV20wVkVxN3VmQjNGM2htSlFnYWd1aW9SZFpSMitiZFlYOVBDR2JHOHRhSVFXWlRuN1VQdwpEQm9MQ0d4VEdhOGRxSUJ3VGh3RVRNNjErUFVCQWdNQkFBR2pXVEJYTUE0R0ExVWREd0VCL3dRRUF3SUNwREFQCkJnTlZIUk1CQWY4RUJUQURBUUgvTUIwR0ExVWREZ1FXQkJTM2Y4QW1UbHBhTC9ZMzZEMDM1VEtnNjByUENqQVYKQmdOVkhSRUVEakFNZ2dwcmRXSmxjbTVsZEdWek1BMEdDU3FHU0liM0RRRUJDd1VBQTRJQkFRQ00xM09sZDkzRApnbzhSbW9PUDFYaHdyYlYxZGVGd2loYlJuT1lHZWcvTklZVGdnNm1DNjJ4OG43NVFWZ2N6N0tZWmJSZUppUVY5CmNhazIwSXRqUUJmVzlsbkZqWVhhb0YxbENwcTR5QWtDQnRwUDkwLzBoQ3lzcjdxbGt0Rm8vRzVQRWp6VmQvNisKTVd3RkxaMTBqMVdBZG5NWEk5RjdjUDZZeDRTT0M1NGMvMFkxams4Q3l1UzR6TzFVNjQwbUNQYVdubUhEL2Q5UApCQ1VVQUFUdUUzcUFEQ0ZCNXpYTzhvOGJiOFdYb3NPb3d6cjN3SGlodjZvZ0JHTkVlcjBDdnNCNlZFRUdOZkg1Cm05eml3bGtIck92WndZU1Q4SURwMUdkdndwTlQ5ZmJUbUF2Z0p0SFNjbDZFNEJ0UnBVTGE1b1ZrdXdudE1xQ0IKY0NzUHdDMTdXNEZGCi0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K"
+              }
+            ],
+            "cluster_id": null,
+            "compute_config": [],
+            "created_at": "2026-06-14T21:15:22Z",
+            "enabled_cluster_log_types": [],
+            "encryption_config": [],
+            "endpoint": "https://B8CA234ED71A780AB5E2449FFB0C4A47.gr7.us-east-1.eks.amazonaws.com",
+            "force_update_version": null,
+            "id": "dijkfood",
+            "identity": [
+              {
+                "oidc": [
+                  {
+                    "issuer": "https://oidc.eks.us-east-1.amazonaws.com/id/B8CA234ED71A780AB5E2449FFB0C4A47"
+                  }
+                ]
+              }
+            ],
+            "kubernetes_network_config": [
+              {
+                "elastic_load_balancing": [
+                  {
+                    "enabled": false
+                  }
+                ],
+                "ip_family": "ipv4",
+                "service_ipv4_cidr": "10.100.0.0/16",
+                "service_ipv6_cidr": ""
+              }
+            ],
+            "name": "dijkfood",
+            "outpost_config": [],
+            "platform_version": "eks.14",
+            "remote_network_config": [],
+            "role_arn": "arn:aws:iam::045437334962:role/LabRole",
+            "status": "ACTIVE",
+            "storage_config": [],
+            "tags": {
+              "Project": "dijkfood"
+            },
+            "tags_all": {
+              "Project": "dijkfood"
+            },
+            "timeouts": null,
+            "upgrade_policy": [
+              {
+                "support_type": "EXTENDED"
+              }
+            ],
+            "version": "1.35",
+            "vpc_config": [
+              {
+                "cluster_security_group_id": "sg-08534a8c51b446a74",
+                "endpoint_private_access": false,
+                "endpoint_public_access": true,
+                "public_access_cidrs": [
+                  "0.0.0.0/0"
+                ],
+                "security_group_ids": [],
+                "subnet_ids": [
+                  "subnet-0447b8d0440c4d511",
+                  "subnet-09688c559bf8738f4",
+                  "subnet-0aa44181f163ac6e7",
+                  "subnet-0e229397e033a4097",
+                  "subnet-0fe69a795ba3c9681"
+                ],
+                "vpc_id": "vpc-0d9bff0bbf6b5095e"
+              }
+            ],
+            "zonal_shift_config": []
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxODAwMDAwMDAwMDAwLCJkZWxldGUiOjkwMDAwMDAwMDAwMCwidXBkYXRlIjozNjAwMDAwMDAwMDAwfSwic2NoZW1hX3ZlcnNpb24iOiIxIn0=",
+          "dependencies": [
+            "module.eks.data.aws_subnets.eks_compatible",
+            "module.eks.data.aws_vpc.default"
+          ]
+        }
+      ]
+    },
+    {
+      "module": "module.eks",
+      "mode": "managed",
+      "type": "aws_eks_node_group",
+      "name": "dijkfood",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "ami_type": "AL2023_x86_64_STANDARD",
+            "arn": "arn:aws:eks:us-east-1:045437334962:nodegroup/dijkfood/dijkfood-nodes/c6cf64de-74e2-f176-0a2d-2c6225baa24f",
+            "capacity_type": "ON_DEMAND",
+            "cluster_name": "dijkfood",
+            "disk_size": 20,
+            "force_update_version": null,
+            "id": "dijkfood:dijkfood-nodes",
+            "instance_types": [
+              "t3.medium"
+            ],
+            "labels": {},
+            "launch_template": [],
+            "node_group_name": "dijkfood-nodes",
+            "node_group_name_prefix": "",
+            "node_repair_config": [],
+            "node_role_arn": "arn:aws:iam::045437334962:role/LabRole",
+            "release_version": "1.35.5-20260529",
+            "remote_access": [],
+            "resources": [
+              {
+                "autoscaling_groups": [
+                  {
+                    "name": "eks-dijkfood-nodes-c6cf64de-74e2-f176-0a2d-2c6225baa24f"
+                  }
+                ],
+                "remote_access_security_group_id": ""
+              }
+            ],
+            "scaling_config": [
+              {
+                "desired_size": 4,
+                "max_size": 8,
+                "min_size": 2
+              }
+            ],
+            "status": "DELETING",
+            "subnet_ids": [
+              "subnet-0447b8d0440c4d511",
+              "subnet-09688c559bf8738f4",
+              "subnet-0aa44181f163ac6e7",
+              "subnet-0e229397e033a4097",
+              "subnet-0fe69a795ba3c9681"
+            ],
+            "tags": {
+              "Project": "dijkfood",
+              "k8s.io/cluster-autoscaler/dijkfood": "owned",
+              "k8s.io/cluster-autoscaler/enabled": "true"
+            },
+            "tags_all": {
+              "Project": "dijkfood",
+              "k8s.io/cluster-autoscaler/dijkfood": "owned",
+              "k8s.io/cluster-autoscaler/enabled": "true"
+            },
+            "taint": [],
+            "timeouts": null,
+            "update_config": [
+              {
+                "max_unavailable": 1,
+                "max_unavailable_percentage": 0
+              }
+            ],
+            "version": "1.35"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjozNjAwMDAwMDAwMDAwLCJkZWxldGUiOjM2MDAwMDAwMDAwMDAsInVwZGF0ZSI6MzYwMDAwMDAwMDAwMH19",
+          "dependencies": [
+            "module.eks.aws_eks_cluster.dijkfood",
+            "module.eks.data.aws_subnets.eks_compatible",
+            "module.eks.data.aws_vpc.default"
+          ]
+        }
+      ]
+    },
+    {
+      "module": "module.iot",
+      "mode": "data",
+      "type": "aws_caller_identity",
+      "name": "current",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "account_id": "045437334962",
+            "arn": "arn:aws:sts::045437334962:assumed-role/voclabs/user4496328=Thalis",
+            "id": "045437334962",
+            "user_id": "AROAQVFCGWWZFC2OLSG6Y:user4496328=Thalis"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0
+        }
+      ]
+    },
+    {
+      "module": "module.iot",
+      "mode": "managed",
+      "type": "aws_iot_topic_rule",
+      "name": "courier_positions",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:iot:us-east-1:045437334962:rule/courier_positions_rule",
+            "cloudwatch_alarm": [],
+            "cloudwatch_logs": [],
+            "cloudwatch_metric": [],
+            "description": "Route courier GPS positions to SQS",
+            "dynamodb": [],
+            "dynamodbv2": [],
+            "elasticsearch": [],
+            "enabled": true,
+            "error_action": [],
+            "firehose": [],
+            "http": [],
+            "id": "courier_positions_rule",
+            "iot_analytics": [],
+            "iot_events": [],
+            "kafka": [],
+            "kinesis": [],
+            "lambda": [],
+            "name": "courier_positions_rule",
+            "republish": [],
+            "s3": [],
+            "sns": [],
+            "sql": "SELECT * FROM 'couriers/+/positions'",
+            "sql_version": "2016-03-23",
+            "sqs": [
+              {
+                "queue_url": "https://sqs.us-east-1.amazonaws.com/045437334962/courier-locations",
+                "role_arn": "arn:aws:iam::045437334962:role/LabRole",
+                "use_base64": false
+              }
+            ],
+            "step_functions": [],
+            "tags": {},
+            "tags_all": {},
+            "timestream": []
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "module.iot.aws_sqs_queue.courier_locations",
+            "module.iot.data.aws_caller_identity.current"
+          ]
+        }
+      ]
+    },
+    {
+      "module": "module.iot",
+      "mode": "managed",
+      "type": "aws_sqs_queue",
+      "name": "courier_locations",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:sqs:us-east-1:045437334962:courier-locations",
+            "content_based_deduplication": false,
+            "deduplication_scope": "",
+            "delay_seconds": 0,
+            "fifo_queue": false,
+            "fifo_throughput_limit": "",
+            "id": "https://sqs.us-east-1.amazonaws.com/045437334962/courier-locations",
+            "kms_data_key_reuse_period_seconds": 300,
+            "kms_master_key_id": "",
+            "max_message_size": 262144,
+            "message_retention_seconds": 86400,
+            "name": "courier-locations",
+            "name_prefix": "",
+            "policy": "",
+            "receive_wait_time_seconds": 0,
+            "redrive_allow_policy": "",
+            "redrive_policy": "",
+            "sqs_managed_sse_enabled": true,
+            "tags": {
+              "Project": "dijkfood"
+            },
+            "tags_all": {
+              "Project": "dijkfood"
+            },
+            "timeouts": null,
+            "url": "https://sqs.us-east-1.amazonaws.com/045437334962/courier-locations",
+            "visibility_timeout_seconds": 30
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxODAwMDAwMDAwMDAsImRlbGV0ZSI6MTgwMDAwMDAwMDAwLCJ1cGRhdGUiOjE4MDAwMDAwMDAwMH19"
+        }
+      ]
+    },
+    {
+      "module": "module.rds",
+      "mode": "data",
+      "type": "aws_vpc",
+      "name": "default",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:ec2:us-east-1:045437334962:vpc/vpc-0d9bff0bbf6b5095e",
+            "cidr_block": "172.31.0.0/16",
+            "cidr_block_associations": [
+              {
+                "association_id": "vpc-cidr-assoc-0064a7fbf943cbde3",
+                "cidr_block": "172.31.0.0/16",
+                "state": "associated"
+              }
+            ],
+            "default": true,
+            "dhcp_options_id": "dopt-00c8c95b835bb5d54",
+            "enable_dns_hostnames": true,
+            "enable_dns_support": true,
+            "enable_network_address_usage_metrics": false,
+            "filter": null,
+            "id": "vpc-0d9bff0bbf6b5095e",
+            "instance_tenancy": "default",
+            "ipv6_association_id": "",
+            "ipv6_cidr_block": "",
+            "main_route_table_id": "rtb-056df48c561902249",
+            "owner_id": "045437334962",
+            "state": null,
+            "tags": {},
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0
+        }
+      ]
+    },
+    {
+      "module": "module.rds",
+      "mode": "managed",
+      "type": "aws_db_instance",
+      "name": "dijkfood",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 2,
+          "attributes": {
+            "address": "dijkfood.ctra4ujpjrsz.us-east-1.rds.amazonaws.com",
+            "allocated_storage": 20,
+            "allow_major_version_upgrade": null,
+            "apply_immediately": false,
+            "arn": "arn:aws:rds:us-east-1:045437334962:db:dijkfood",
+            "auto_minor_version_upgrade": true,
+            "availability_zone": "us-east-1f",
+            "backup_retention_period": 7,
+            "backup_target": "region",
+            "backup_window": "08:09-08:39",
+            "blue_green_update": [],
+            "ca_cert_identifier": "rds-ca-rsa2048-g1",
+            "character_set_name": "",
+            "copy_tags_to_snapshot": false,
+            "custom_iam_instance_profile": "",
+            "customer_owned_ip_enabled": false,
+            "database_insights_mode": "standard",
+            "db_name": "dijkfood",
+            "db_subnet_group_name": "default",
+            "dedicated_log_volume": false,
+            "delete_automated_backups": true,
+            "deletion_protection": false,
+            "domain": "",
+            "domain_auth_secret_arn": "",
+            "domain_dns_ips": [],
+            "domain_fqdn": "",
+            "domain_iam_role_name": "",
+            "domain_ou": "",
+            "enabled_cloudwatch_logs_exports": [],
+            "endpoint": "dijkfood.ctra4ujpjrsz.us-east-1.rds.amazonaws.com:5432",
+            "engine": "postgres",
+            "engine_lifecycle_support": "open-source-rds-extended-support",
+            "engine_version": "16",
+            "engine_version_actual": "16.13",
+            "final_snapshot_identifier": null,
+            "hosted_zone_id": "Z2R2ITUGPM61AM",
+            "iam_database_authentication_enabled": false,
+            "id": "db-VVNEGBD3WBCBWBXQPXGDRAWWSI",
+            "identifier": "dijkfood",
+            "identifier_prefix": "",
+            "instance_class": "db.t3.micro",
+            "iops": 0,
+            "kms_key_id": "",
+            "latest_restorable_time": "2026-06-15T05:33:09Z",
+            "license_model": "postgresql-license",
+            "listener_endpoint": [],
+            "maintenance_window": "sun:05:32-sun:06:02",
+            "manage_master_user_password": null,
+            "master_user_secret": [],
+            "master_user_secret_kms_key_id": null,
+            "max_allocated_storage": 0,
+            "monitoring_interval": 0,
+            "monitoring_role_arn": "",
+            "multi_az": false,
+            "nchar_character_set_name": "",
+            "network_type": "IPV4",
+            "option_group_name": "default:postgres-16",
+            "parameter_group_name": "default.postgres16",
+            "password": "Dijkfood2026!",
+            "password_wo": null,
+            "password_wo_version": null,
+            "performance_insights_enabled": false,
+            "performance_insights_kms_key_id": "",
+            "performance_insights_retention_period": 0,
+            "port": 5432,
+            "publicly_accessible": false,
+            "replica_mode": "",
+            "replicas": [],
+            "replicate_source_db": "",
+            "resource_id": "db-VVNEGBD3WBCBWBXQPXGDRAWWSI",
+            "restore_to_point_in_time": [],
+            "s3_import": [],
+            "skip_final_snapshot": true,
+            "snapshot_identifier": null,
+            "status": "available",
+            "storage_encrypted": false,
+            "storage_throughput": 0,
+            "storage_type": "gp2",
+            "tags": {
+              "Project": "dijkfood"
+            },
+            "tags_all": {
+              "Project": "dijkfood"
+            },
+            "timeouts": null,
+            "timezone": "",
+            "upgrade_storage_config": null,
+            "username": "dijkfood",
+            "vpc_security_group_ids": [
+              "sg-06a476d71f4dbc44e"
+            ]
+          },
+          "sensitive_attributes": [
+            [
+              {
+                "type": "get_attr",
+                "value": "password"
+              }
+            ],
+            [
+              {
+                "type": "get_attr",
+                "value": "password_wo"
+              }
+            ]
+          ],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjozMDAwMDAwMDAwMDAwLCJkZWxldGUiOjM2MDAwMDAwMDAwMDAsInVwZGF0ZSI6NDgwMDAwMDAwMDAwMH0sInNjaGVtYV92ZXJzaW9uIjoiMiJ9",
+          "dependencies": [
+            "module.rds.aws_security_group.rds",
+            "module.rds.data.aws_vpc.default"
+          ]
+        }
+      ]
+    },
+    {
+      "module": "module.rds",
+      "mode": "managed",
+      "type": "aws_security_group",
+      "name": "rds",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 1,
+          "attributes": {
+            "arn": "arn:aws:ec2:us-east-1:045437334962:security-group/sg-06a476d71f4dbc44e",
+            "description": "Allow inbound traffic to RDS from VPC",
+            "egress": [
+              {
+                "cidr_blocks": [
+                  "0.0.0.0/0"
+                ],
+                "description": "",
+                "from_port": 0,
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "protocol": "-1",
+                "security_groups": [],
+                "self": false,
+                "to_port": 0
+              }
+            ],
+            "id": "sg-06a476d71f4dbc44e",
+            "ingress": [
+              {
+                "cidr_blocks": [
+                  "172.31.0.0/16"
+                ],
+                "description": "PostgreSQL access from VPC",
+                "from_port": 5432,
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "protocol": "tcp",
+                "security_groups": [],
+                "self": false,
+                "to_port": 5432
+              }
+            ],
+            "name": "dijkfood-rds-sg",
+            "name_prefix": "",
+            "owner_id": "045437334962",
+            "revoke_rules_on_delete": false,
+            "tags": {
+              "Project": "dijkfood"
+            },
+            "tags_all": {
+              "Project": "dijkfood"
+            },
+            "timeouts": null,
+            "vpc_id": "vpc-0d9bff0bbf6b5095e"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjo2MDAwMDAwMDAwMDAsImRlbGV0ZSI6OTAwMDAwMDAwMDAwfSwic2NoZW1hX3ZlcnNpb24iOiIxIn0=",
+          "dependencies": [
+            "module.rds.data.aws_vpc.default"
+          ]
+        }
+      ]
+    },
+    {
+      "module": "module.s3",
+      "mode": "managed",
+      "type": "aws_s3_bucket",
+      "name": "assets",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "acceleration_status": "",
+            "acl": null,
+            "arn": "arn:aws:s3:::dijkfood-assets-b97c50c7",
+            "bucket": "dijkfood-assets-b97c50c7",
+            "bucket_domain_name": "dijkfood-assets-b97c50c7.s3.amazonaws.com",
+            "bucket_prefix": "",
+            "bucket_regional_domain_name": "dijkfood-assets-b97c50c7.s3.us-east-1.amazonaws.com",
+            "cors_rule": [],
+            "force_destroy": true,
+            "grant": [
+              {
+                "id": "f6726734f97b99ea30375b719dcb9e9ce8020cf8ff5b746b400bae9e093e4980",
+                "permissions": [
+                  "FULL_CONTROL"
+                ],
+                "type": "CanonicalUser",
+                "uri": ""
+              }
+            ],
+            "hosted_zone_id": "Z3AQBSTGFYJSTF",
+            "id": "dijkfood-assets-b97c50c7",
+            "lifecycle_rule": [],
+            "logging": [],
+            "object_lock_configuration": [],
+            "object_lock_enabled": false,
+            "policy": "",
+            "region": "us-east-1",
+            "replication_configuration": [],
+            "request_payer": "BucketOwner",
+            "server_side_encryption_configuration": [
+              {
+                "rule": [
+                  {
+                    "apply_server_side_encryption_by_default": [
+                      {
+                        "kms_master_key_id": "",
+                        "sse_algorithm": "AES256"
+                      }
+                    ],
+                    "bucket_key_enabled": false
+                  }
+                ]
+              }
+            ],
+            "tags": {
+              "Project": "dijkfood"
+            },
+            "tags_all": {
+              "Project": "dijkfood"
+            },
+            "timeouts": null,
+            "versioning": [
+              {
+                "enabled": true,
+                "mfa_delete": false
+              }
+            ],
+            "website": [],
+            "website_domain": null,
+            "website_endpoint": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxMjAwMDAwMDAwMDAwLCJkZWxldGUiOjM2MDAwMDAwMDAwMDAsInJlYWQiOjEyMDAwMDAwMDAwMDAsInVwZGF0ZSI6MTIwMDAwMDAwMDAwMH19",
+          "dependencies": [
+            "module.s3.random_id.bucket_suffix"
+          ]
+        }
+      ]
+    },
+    {
+      "module": "module.s3",
+      "mode": "managed",
+      "type": "aws_s3_bucket",
+      "name": "datalake",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "acceleration_status": "",
+            "acl": null,
+            "arn": "arn:aws:s3:::dijkfood-datalake-b97c50c7",
+            "bucket": "dijkfood-datalake-b97c50c7",
+            "bucket_domain_name": "dijkfood-datalake-b97c50c7.s3.amazonaws.com",
+            "bucket_prefix": "",
+            "bucket_regional_domain_name": "dijkfood-datalake-b97c50c7.s3.us-east-1.amazonaws.com",
+            "cors_rule": [],
+            "force_destroy": true,
+            "grant": [
+              {
+                "id": "f6726734f97b99ea30375b719dcb9e9ce8020cf8ff5b746b400bae9e093e4980",
+                "permissions": [
+                  "FULL_CONTROL"
+                ],
+                "type": "CanonicalUser",
+                "uri": ""
+              }
+            ],
+            "hosted_zone_id": "Z3AQBSTGFYJSTF",
+            "id": "dijkfood-datalake-b97c50c7",
+            "lifecycle_rule": [],
+            "logging": [],
+            "object_lock_configuration": [],
+            "object_lock_enabled": false,
+            "policy": "",
+            "region": "us-east-1",
+            "replication_configuration": [],
+            "request_payer": "BucketOwner",
+            "server_side_encryption_configuration": [
+              {
+                "rule": [
+                  {
+                    "apply_server_side_encryption_by_default": [
+                      {
+                        "kms_master_key_id": "",
+                        "sse_algorithm": "AES256"
+                      }
+                    ],
+                    "bucket_key_enabled": false
+                  }
+                ]
+              }
+            ],
+            "tags": {
+              "Project": "dijkfood"
+            },
+            "tags_all": {
+              "Project": "dijkfood"
+            },
+            "timeouts": null,
+            "versioning": [
+              {
+                "enabled": true,
+                "mfa_delete": false
+              }
+            ],
+            "website": [],
+            "website_domain": null,
+            "website_endpoint": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxMjAwMDAwMDAwMDAwLCJkZWxldGUiOjM2MDAwMDAwMDAwMDAsInJlYWQiOjEyMDAwMDAwMDAwMDAsInVwZGF0ZSI6MTIwMDAwMDAwMDAwMH19",
+          "dependencies": [
+            "module.s3.random_id.bucket_suffix"
+          ]
+        }
+      ]
+    },
+    {
+      "module": "module.s3",
+      "mode": "managed",
+      "type": "aws_s3_bucket_ownership_controls",
+      "name": "assets",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "bucket": "dijkfood-assets-b97c50c7",
+            "id": "dijkfood-assets-b97c50c7",
+            "rule": [
+              {
+                "object_ownership": "BucketOwnerPreferred"
+              }
+            ]
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "module.s3.aws_s3_bucket.assets",
+            "module.s3.random_id.bucket_suffix"
+          ]
+        }
+      ]
+    },
+    {
+      "module": "module.s3",
+      "mode": "managed",
+      "type": "aws_s3_bucket_ownership_controls",
+      "name": "datalake",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "bucket": "dijkfood-datalake-b97c50c7",
+            "id": "dijkfood-datalake-b97c50c7",
+            "rule": [
+              {
+                "object_ownership": "BucketOwnerPreferred"
+              }
+            ]
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "module.s3.aws_s3_bucket.datalake",
+            "module.s3.random_id.bucket_suffix"
+          ]
+        }
+      ]
+    },
+    {
+      "module": "module.s3",
+      "mode": "managed",
+      "type": "aws_s3_bucket_versioning",
+      "name": "assets",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "bucket": "dijkfood-assets-b97c50c7",
+            "expected_bucket_owner": "",
+            "id": "dijkfood-assets-b97c50c7",
+            "mfa": null,
+            "versioning_configuration": [
+              {
+                "mfa_delete": "",
+                "status": "Enabled"
+              }
+            ]
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "module.s3.aws_s3_bucket.assets",
+            "module.s3.random_id.bucket_suffix"
+          ]
+        }
+      ]
+    },
+    {
+      "module": "module.s3",
+      "mode": "managed",
+      "type": "aws_s3_bucket_versioning",
+      "name": "datalake",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "bucket": "dijkfood-datalake-b97c50c7",
+            "expected_bucket_owner": "",
+            "id": "dijkfood-datalake-b97c50c7",
+            "mfa": null,
+            "versioning_configuration": [
+              {
+                "mfa_delete": "",
+                "status": "Enabled"
+              }
+            ]
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "module.s3.aws_s3_bucket.datalake",
+            "module.s3.random_id.bucket_suffix"
+          ]
+        }
+      ]
+    },
+    {
+      "module": "module.s3",
+      "mode": "managed",
+      "type": "random_id",
+      "name": "bucket_suffix",
+      "provider": "provider[\"registry.terraform.io/hashicorp/random\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "b64_std": "uXxQxw==",
+            "b64_url": "uXxQxw",
+            "byte_length": 4,
+            "dec": "3111932103",
+            "hex": "b97c50c7",
+            "id": "uXxQxw",
+            "keepers": null,
+            "prefix": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0
+        }
+      ]
+    }
+  ],
+  "check_results": null
+}

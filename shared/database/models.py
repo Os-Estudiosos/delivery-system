@@ -46,9 +46,7 @@ class User(Base):
     name = Column(String(255), nullable=False)
     house_lat = Column(Double, nullable=False)
     house_lon = Column(Double, nullable=False)
-    region_id = Column(Integer, ForeignKey("region.id"), nullable=True)
 
-    region = relationship("Region", back_populates="users")
     phones = relationship("Phone", back_populates="user", cascade="all, delete-orphan")
     orders = relationship("Order", back_populates="user")
 
@@ -58,10 +56,6 @@ class Region(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(255), nullable=False, unique=True)
-
-    users = relationship("User", back_populates="region")
-    restaurants = relationship("Restaurant", back_populates="region")
-    couriers = relationship("Courier", back_populates="region")
 
 
 
@@ -91,9 +85,7 @@ class Restaurant(Base):
     lat             = Column(Double, nullable=False)
     lon             = Column(Double, nullable=False)
     kitchen_type_id = Column(Integer, ForeignKey("kitchen_type.id"), nullable=False)
-    region_id       = Column(Integer, ForeignKey("region.id"), nullable=False)
 
-    region = relationship("Region", back_populates="restaurants")
     kitchen_type = relationship("KitchenType", back_populates="restaurants")
     items = relationship("Item", back_populates="restaurant", cascade="all, delete-orphan")
     orders = relationship("Order", back_populates="restaurant")
@@ -121,10 +113,8 @@ class Courier(Base):
     vehicle = Column(Enum(VehicleType, name="vehicle_type"), nullable=False)
     lat = Column(Double, nullable=False)
     lon = Column(Double, nullable=False)
-    region_id = Column(Integer, ForeignKey("region.id"), nullable=True)
 
     deliveries = relationship("Delivery", back_populates="courier")
-    region = relationship("Region", back_populates="couriers")
 
 
 

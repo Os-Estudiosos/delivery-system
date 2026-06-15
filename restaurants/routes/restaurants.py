@@ -154,15 +154,11 @@ def create_restaurant(
 ):
     db_kitchen = _get_kitchen_or_404(restaurant.kitchen_type_id, session)
 
-    import os
-    REGION_ID = int(os.environ.get("REGION_ID", "1"))
-
     db_restaurant = Restaurant(
         name=restaurant.name,
         lat=restaurant.lat,
         lon=restaurant.lon,
         kitchen_type=db_kitchen,
-        region_id=REGION_ID,
     )
 
     session.add(db_restaurant)

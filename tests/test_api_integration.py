@@ -83,8 +83,7 @@ def test_clients_crud(http_client):
         "email": client_email,
         "name": client_name,
         "house_lat": -23.5510,
-        "house_lon": -46.6340,
-        "region_id": region_id
+        "house_lon": -46.6340
     }
     create_resp = http_client.post(f"{CLIENTS_URL}/client", json=create_payload)
     assert create_resp.status_code == 201, f"Create client failed: {create_resp.text}"
@@ -194,8 +193,7 @@ def test_couriers_crud_and_location(http_client):
         "name": courier_name,
         "vehicle": "MOTORCYCLE",
         "lat": -23.5500,
-        "lon": -46.6330,
-        "region_id": 1
+        "lon": -46.6330
     }
     create_resp = http_client.post(f"{COURIERS_URL}/courier/", json=courier_payload)
     assert create_resp.status_code == 201, f"Create courier failed: {create_resp.text}"
@@ -242,8 +240,7 @@ def test_order_and_delivery_lifecycle(http_client):
         "email": f"user_{unique_suffix}@example.com",
         "name": f"User {unique_suffix}",
         "house_lat": -23.5510,
-        "house_lon": -46.6340,
-        "region_id": 1
+        "house_lon": -46.6340
     }
     user_resp = http_client.post(f"{CLIENTS_URL}/client", json=user_payload)
     assert user_resp.status_code == 201
@@ -280,8 +277,7 @@ def test_order_and_delivery_lifecycle(http_client):
         "name": f"Deliverer {unique_suffix}",
         "vehicle": "MOTORCYCLE",
         "lat": -23.5500,
-        "lon": -46.6330,
-        "region_id": 1
+        "lon": -46.6330
     }
     courier_resp = http_client.post(f"{COURIERS_URL}/courier/", json=courier_payload)
     assert courier_resp.status_code == 201

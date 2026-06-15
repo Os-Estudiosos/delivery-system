@@ -10,3 +10,7 @@ data:
   AWS_DEFAULT_REGION: "us-east-1"
   ENV: "production"
   AWS_ENDPOINT: ""
+  DB_POOL_SIZE: "8"
+  DB_MAX_OVERFLOW: "4"
+
+

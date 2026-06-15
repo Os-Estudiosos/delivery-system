@@ -52,17 +52,28 @@ if ENV == "local" and AWS_ENDPOINT:
 sqs_client = boto3.client("sqs", **sqs_kwargs)
 
 
+_cached_analytics_queue_url = None
+
+
 def _get_analytics_queue_url():
+    global _cached_analytics_queue_url
+    if _cached_analytics_queue_url:
+        return _cached_analytics_queue_url
+
     queue_url = os.environ.get("ANALYTICS_SQS_QUEUE_URL")
     if queue_url:
+        _cached_analytics_queue_url = queue_url
         return queue_url
     try:
         resp = sqs_client.get_queue_url(QueueName="analytics-events")
-        return resp["QueueUrl"]
+        _cached_analytics_queue_url = resp["QueueUrl"]
+        return _cached_analytics_queue_url
     except Exception:
         if AWS_ENDPOINT:
-            return f"{AWS_ENDPOINT}/000000000000/analytics-events"
+            _cached_analytics_queue_url = f"{AWS_ENDPOINT}/000000000000/analytics-events"
+            return _cached_analytics_queue_url
         return ""
+
 
 
 def _publish_analytics_event(order_id: int, status: str, restaurant_id: int, region_id: int):
@@ -268,9 +279,9 @@ def _validate_order_items(item_payloads: list[OrderItemCreate], restaurant_id: i
     return items
 
 
-def _call_matching_service(restaurant_id: int, region_id: int) -> int | None:
+def _call_matching_service(restaurant_id: int) -> int | None:
     url = f"{MATCHING_ENDPOINT}/match"
-    payload = {"restaurant_id": restaurant_id, "region_id": region_id}
+    payload = {"restaurant_id": restaurant_id}
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
         url,
@@ -341,25 +352,20 @@ def create_order(order: OrderCreate, session: Session = Depends(get_session)):
 
     order_id = db_order.id
     restaurant_id = db_restaurant.id
-    region_id = db_restaurant.region_id
+    region_id = int(os.environ.get("REGION_ID", "1"))
 
-    # Close session early to release connection back to pool before making HTTP calls
-    session.close()
+    # Call matching service
+    best_courier_id = _call_matching_service(restaurant_id)
 
-    # Call matching service without holding the connection
-    best_courier_id = _call_matching_service(restaurant_id, region_id)
-
-    # Use a fresh session to update order/delivery status
-    new_session = SessionLocal()
     try:
         if best_courier_id:
             db_delivery = Delivery(order_id=order_id, courier_id=best_courier_id)
-            new_session.add(db_delivery)
-            new_session.flush()
+            session.add(db_delivery)
+            session.flush()
 
             db_event = Event(status=OrderStatus.CONFIRMED, delivery_id=db_delivery.id)
-            new_session.add(db_event)
-            new_session.commit()
+            session.add(db_event)
+            session.commit()
             
             _publish_analytics_event(
                 order_id=order_id,
@@ -367,17 +373,16 @@ def create_order(order: OrderCreate, session: Session = Depends(get_session)):
                 restaurant_id=restaurant_id,
                 region_id=region_id
             )
+        else:
+            session.commit()
         
-        # Load the updated order to construct response
-        db_order_refetched = new_session.query(Order).filter(Order.id == order_id).first()
-        return _to_order_response(db_order_refetched)
+        session.refresh(db_order)
+        return _to_order_response(db_order)
     except Exception as e:
         print(f"Failed to assign delivery on order create: {e}")
-        new_session.rollback()
-        db_order_refetched = new_session.query(Order).filter(Order.id == order_id).first()
-        return _to_order_response(db_order_refetched)
-    finally:
-        new_session.close()
+        session.rollback()
+        session.refresh(db_order)
+        return _to_order_response(db_order)
 
 
 @router.patch('/{order_id}', response_model=OrderResponse)
