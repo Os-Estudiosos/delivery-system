@@ -5,7 +5,7 @@ app = FastAPI(title="region-service")
 
 
 @app.get("/health")
-def health():
+async def health():
     return {
         "status": "ok",
         "service": "region"

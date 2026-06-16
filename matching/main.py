@@ -96,11 +96,11 @@ def startup_event():
     asyncio.create_task(load_graph_background())
 
 @app.get("/health")
-def health():
+async def health():
     return {"status": "ok", "service": "matching"}
 
 @app.get("/ready")
-def ready():
+async def ready():
     if graph is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -137,17 +137,49 @@ def match_courier(req: MatchRequest, session: Session = Depends(get_session)):
     if not couriers:
         return {"courier_id": None}
 
+    # Cache the Dijkstra calculation for each restaurant since restaurants do not move!
+    global restaurant_dists_cache
+    if 'restaurant_dists_cache' not in globals():
+        restaurant_dists_cache = {}
+
     try:
-        restaurant_node = ox.distance.nearest_nodes(graph, restaurant.lon, restaurant.lat)
-        dists = nx.single_source_dijkstra_path_length(graph, restaurant_node, weight='length')
+        if req.restaurant_id in restaurant_dists_cache:
+            dists = restaurant_dists_cache[req.restaurant_id]
+        else:
+            restaurant_node = ox.distance.nearest_nodes(graph, restaurant.lon, restaurant.lat)
+            dists = nx.single_source_dijkstra_path_length(graph, restaurant_node, weight='length')
+            restaurant_dists_cache[req.restaurant_id] = dists
     except Exception as e:
         print(f"Dijkstra error: {e}")
         return {"courier_id": None}
 
+    global courier_nodes_cache
+    if 'courier_nodes_cache' not in globals():
+        courier_nodes_cache = {}
+
+    courier_nodes = []
     try:
-        courier_lons = [c.lon for c in couriers]
-        courier_lats = [c.lat for c in couriers]
-        courier_nodes = ox.distance.nearest_nodes(graph, courier_lons, courier_lats)
+        couriers_to_calc = []
+        lons_to_calc = []
+        lats_to_calc = []
+
+        for c in couriers:
+            if c.id in courier_nodes_cache:
+                pass
+            else:
+                couriers_to_calc.append(c)
+                lons_to_calc.append(c.lon)
+                lats_to_calc.append(c.lat)
+
+        if couriers_to_calc:
+            new_nodes = ox.distance.nearest_nodes(graph, lons_to_calc, lats_to_calc)
+            # handle case where nearest_nodes returns a single scalar when N=1
+            if len(couriers_to_calc) == 1 and not isinstance(new_nodes, (list, tuple)):
+                new_nodes = [new_nodes]
+            for c, n in zip(couriers_to_calc, new_nodes):
+                courier_nodes_cache[c.id] = n
+
+        courier_nodes = [courier_nodes_cache[c.id] for c in couriers]
     except Exception as e:
         print(f"Nearest nodes lookup error: {e}")
         return {"courier_id": None}

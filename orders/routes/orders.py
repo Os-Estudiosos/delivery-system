@@ -340,6 +340,10 @@ def create_order(order: OrderCreate, session: Session = Depends(get_session)):
     session.add(db_order)
 
     try:
+        session.flush()
+        order_id = db_order.id
+        restaurant_id = db_restaurant.id
+        region_id = int(os.environ.get("REGION_ID", "1"))
         session.commit()
     except IntegrityError:
         session.rollback()
@@ -348,17 +352,13 @@ def create_order(order: OrderCreate, session: Session = Depends(get_session)):
             detail='Order already exists or payload violates constraints.',
         )
 
-    session.refresh(db_order)
-
-    order_id = db_order.id
-    restaurant_id = db_restaurant.id
-    region_id = int(os.environ.get("REGION_ID", "1"))
-
     # Call matching service
+    # NO database connection is held here because the transaction was committed!
     best_courier_id = _call_matching_service(restaurant_id)
 
     try:
         if best_courier_id:
+            # This silently acquires a new connection
             db_delivery = Delivery(order_id=order_id, courier_id=best_courier_id)
             session.add(db_delivery)
             session.flush()
@@ -374,9 +374,11 @@ def create_order(order: OrderCreate, session: Session = Depends(get_session)):
                 region_id=region_id
             )
         else:
-            session.commit()
+            pass # No commit needed
         
-        session.refresh(db_order)
+        # Now refresh db_order
+        # We need to re-fetch it because it might be expired and we want to return it
+        db_order = session.query(Order).filter(Order.id == order_id).first()
         return _to_order_response(db_order)
     except Exception as e:
         print(f"Failed to assign delivery on order create: {e}")

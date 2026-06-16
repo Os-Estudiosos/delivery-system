@@ -6,7 +6,7 @@ app = FastAPI(title="clients-service")
 
 
 @app.get("/health")
-def health():
+async def health():
     return {"status": "ok", "service": "clients"}
 
 

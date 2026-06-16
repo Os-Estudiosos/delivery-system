@@ -1,3 +1,4 @@
+import os
 import asyncio
 import aiohttp
 import time
@@ -671,14 +672,13 @@ async def run_load_test(rps, duration, seed_ids, debug_first=False):
 async def main(url: str, rps: int = None, duration: int = None):
     global BASE_URL, CITY_NAMESPACE
     BASE_URL = url
-    
+    CITY_NAMESPACE = os.environ.get("CITY_NAMESPACE", "")
+
     print("--- DijkFood Load Simulator ---")
     connector = aiohttp.TCPConnector(limit=0, resolver=LocalResolver())
     timeout = aiohttp.ClientTimeout(total=15)
     async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
         seed_ids = await seed_data(session)
-
-    import os
     is_quick = os.environ.get("QUICK_TEST") == "true"
     
     if is_quick or rps is not None or duration is not None:

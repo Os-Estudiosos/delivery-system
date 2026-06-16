@@ -13,5 +13,8 @@ spec:
         - name: simulator
           image: <SIMULATOR_IMAGE_URI>
           args: ["<TARGET_URL>"]
+          env:
+            - name: CITY_NAMESPACE
+              value: "<CITY_NAMESPACE>"
       restartPolicy: Never
   backoffLimit: 1

@@ -431,13 +431,13 @@ def main():
         
         for idx, ns in enumerate(namespaces_to_simulate):
             job_name = f"load-simulator-{idx + 1}"
-            sim_url = f"http://{ns}.local"
+            sim_url = f"http://{ingress_hostname}"
             
             job_content = job_template
             job_content = job_content.replace("name: load-simulator", f"name: {job_name}")
             job_content = job_content.replace("<SIMULATOR_IMAGE_URI>", simulator_image_uri)
             job_content = job_content.replace("<TARGET_URL>", sim_url)
-            job_content = job_content.replace(f'args: ["{sim_url}"]', f'args: ["{sim_url}", "--rps", "30", "--duration", "20"]')
+            job_content = job_content.replace("<CITY_NAMESPACE>", ns)
             
             # Write to a temp file and apply
             temp_job_path = K8S_DIR / "admin" / f"temp-{job_name}.yaml"
@@ -540,8 +540,9 @@ print(f"Formatados {{files_processed}} arquivos com sucesso!")
                 if temp_path.exists():
                     temp_path.unlink()
             for job_name in job_names:
-                print(f"[K8s] Removendo Job {job_name}...")
-                subprocess.run(["kubectl", "delete", "job", job_name, "-n", "admin-namespace"], capture_output=True)
+                pass
+                # print(f"[K8s] Removendo Job {job_name}...")
+                # subprocess.run(["kubectl", "delete", "job", job_name, "-n", "admin-namespace"], capture_output=True)
 
     except Exception as e:
         print(f"\n❌ [CRÍTICO] Falha na orquestração: {e}")

@@ -5,7 +5,7 @@ from routes.deliveries import router as deliveries_router
 app = FastAPI(title="orders-service")
 
 @app.get("/health")
-def health():
+async def health():
     return {"status": "ok", "service": "orders"}
 
 app.include_router(orders_router)

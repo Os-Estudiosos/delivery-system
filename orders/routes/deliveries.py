@@ -315,11 +315,16 @@ def update_delivery_status(delivery_id: int, payload: DeliveryStatusCreate, sess
         # Extract fields needed for matching call
         restaurant_id = db_delivery.order.restaurant_id
         region_id = int(os.environ.get("REGION_ID", "1"))
+        order_id_for_analytics = db_delivery.order.id
+        
+        # Commit to free the DB connection before the blocking HTTP request
+        session.commit()
         
         # Call matching service
         best_courier_id = _call_matching_service(restaurant_id)
         
         try:
+            # When we access db_delivery.courier_id below, SQLAlchemy will acquire a new connection implicitly
             if best_courier_id:
                 db_delivery.courier_id = best_courier_id
             
@@ -334,9 +339,9 @@ def update_delivery_status(delivery_id: int, payload: DeliveryStatusCreate, sess
             
             # SQS publishing
             _publish_analytics_event(
-                order_id=db_delivery.order.id,
+                order_id=order_id_for_analytics,
                 status=payload.status.value,
-                restaurant_id=db_delivery.order.restaurant_id,
+                restaurant_id=restaurant_id,
                 region_id=region_id
             )
             return _to_delivery_status_response(db_event)
