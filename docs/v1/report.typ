@@ -141,10 +141,6 @@ A arquitetura foi projetada para garantir separação de responsabilidades, alta
 - *Decisão:* Implementação de Security Groups em cascata.
 - *Justificativa:* O Application Load Balancer atua como o único ponto de entrada acessível via Internet. Os contêineres ECS aceitam tráfego exclusivamente originado pelo Security Group do ALB. Da mesma forma, a instância do RDS PostgreSQL foi configurada para não possuir IP público (`PubliclyAccessible=False`) e seu Security Group aceita conexões apenas do Security Group do ECS na porta 5432. Esse isolamento mitiga vetores de ataque externos direto à camada de dados.
 
-== Decisões extras
-- *Decisões*: ---------------------
-- *Justificativa*: Fizemos essas decisões apenas para facilitar o desenvolvimento, a implantação e a manutenção do sistema.
-
 = Validação dos Requisitos Funcionais
 
 A API REST implementada atende estritamente às regras de negócio mapeadas:
@@ -169,6 +165,10 @@ Durante a fase de implantação e testes de estresse, dois desafios arquiteturai
 
 A tabela abaixo projeta os custos mensais estimados (em USD) operando ininterruptamente, demonstrando a elasticidade de custos entre o dimensionamento para a operação base e o auto-scaling em picos estressantes.
 
+Dividimos os custos em duas categorias: "Operação Normal", que representa o custo mensal para manter a infraestrutura operando com uma carga média de 50 requisições por segundo, e "Evento Especial", que representa o custo mensal durante um pico de tráfego de 200 requisições por segundo.
+
+Considere $P$ como sendo o número de cidades polo (cidades grandes como São Paulo e Rio de Janeiro) e $C$ como o número de cidades satélites (cidades menores). O custo total é calculado como:
+
 #align(center)[
   #table(
     columns: (auto, auto, auto),
@@ -180,11 +180,17 @@ A tabela abaixo projeta os custos mensais estimados (em USD) operando ininterrup
     [*RDS PostgreSQL* (db.t3.micro Multi-AZ, on-demand, com Proxy e com 20GB de armazenamento e de backup)], [\$ *54.68*], [\$ *54.68*],
     [*DynamoDB* (Standard com 200 bytes por item)], [\$ *90.59* (1GB de armazenamento e 50 gravações e 50 leituras por segundo)], [\$ *337.59* (3,5GB de armazenamento e 200 gravações e 200 leituras por segundo)],
     [*Amazon S3* (Standard e com 20GB de armazenamento)], [\$ *0.23*], [\$ *0.23*],
+    [*Amazon EKS*],[],[],
+    [*IoT Core*],[],[],
+    [*Amazon SQS*],[],[],
+    [*Kinesis Firehose*],[],[],
+    [*AWS Glue*],[],[],
+    [*Amazon Athena*],[],[],
     [*Custo Total Estimado*], [*\$ 317.77*], [*\$ 1190.38*],
   )
 ]
 
-*Nota de Resiliência:* O valor constante no RDS se deve ao provisionamento fixo com `MultiAZ=True`. A alta disponibilidade sacrifica a redução de custo base para garantir sobrevivência à queda de zonas, conforme o edital do projeto.
+*Nota:* O valor constante no RDS se deve ao provisionamento fixo com `MultiAZ=True`. A alta disponibilidade sacrifica a redução de custo base para garantir sobrevivência à queda de zonas, conforme o requisito do projeto.
 
 
 = Considerações Finais
