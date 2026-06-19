@@ -1,6 +1,7 @@
 import enum
 from datetime import datetime, timezone
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Column,
     DateTime,
@@ -113,6 +114,7 @@ class Courier(Base):
     vehicle = Column(Enum(VehicleType, name="vehicle_type"), nullable=False)
     lat = Column(Double, nullable=False)
     lon = Column(Double, nullable=False)
+    available = Column(Boolean, nullable=False, default=True)
 
     deliveries = relationship("Delivery", back_populates="courier")
 

@@ -19,8 +19,18 @@ from sqlalchemy import text
 
 app = FastAPI(title="admin-service")
 
-def create_database_and_apply_ddl(db_name: str):
-    db_host = os.environ.get("DB_HOST", "localhost")
+@app.on_event("startup")
+async def startup_event():
+    try:
+        from anyio import to_thread
+        limiter = to_thread.current_default_thread_limiter()
+        limiter.total_tokens = 500
+        print(f"AnyIO thread pool limit set to {limiter.total_tokens}")
+    except Exception as e:
+        print(f"Failed to set AnyIO thread pool limit: {e}")
+
+
+def create_database_and_apply_ddl(db_name: str, db_host: str, region_id: int = None, city_name: str = None):
     db_port = os.environ.get("DB_PORT", "5432")
     db_user = os.environ.get("DB_USER", "postgres")
     db_password = os.environ.get("DB_PASSWORD", "postgres")
@@ -42,28 +52,47 @@ def create_database_and_apply_ddl(db_name: str):
         cursor.close()
         conn.close()
 
+    drop_path = "/app/shared/database/sql/DROP.sql"
+    if not os.path.exists(drop_path):
+        drop_path = "shared/database/sql/DROP.sql"
+
     ddl_path = "/app/shared/database/sql/DDL.sql"
     if not os.path.exists(ddl_path):
         ddl_path = "shared/database/sql/DDL.sql"
     
-    if os.path.exists(ddl_path):
-        with open(ddl_path, "r") as f:
-            ddl_sql = f.read()
+    conn_new = psycopg2.connect(
+        dbname=db_name,
+        user=db_user,
+        password=db_password,
+        host=db_host,
+        port=db_port
+    )
+    cursor_new = conn_new.cursor()
+    try:
+        if os.path.exists(drop_path):
+            with open(drop_path, "r") as f:
+                drop_sql = f.read()
+            cursor_new.execute(drop_sql)
+            conn_new.commit()
+            print(f"[DB] Applied DROP.sql on {db_name} (host: {db_host})")
 
-        conn_new = psycopg2.connect(
-            dbname=db_name,
-            user=db_user,
-            password=db_password,
-            host=db_host,
-            port=db_port
-        )
-        cursor_new = conn_new.cursor()
-        try:
+        if os.path.exists(ddl_path):
+            with open(ddl_path, "r") as f:
+                ddl_sql = f.read()
             cursor_new.execute(ddl_sql)
             conn_new.commit()
-        finally:
-            cursor_new.close()
-            conn_new.close()
+            print(f"[DB] Applied DDL.sql on {db_name} (host: {db_host})")
+
+        if region_id is not None and city_name is not None:
+            cursor_new.execute(
+                "INSERT INTO region (id, name) VALUES (%s, %s) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;",
+                (region_id, city_name)
+            )
+            conn_new.commit()
+            print(f"[DB] Seeded region id={region_id}, name='{city_name}' on {db_name}")
+    finally:
+        cursor_new.close()
+        conn_new.close()
 
 # Initialize Kubernetes configuration
 try:
@@ -84,6 +113,7 @@ ATHENA_DATABASE = "dijkfood_analytics"
 # Schemas
 class CityCreate(BaseModel):
     name: str  # e.g., "São Paulo, Brazil" or "Campinas"
+    db_host: str | None = None
 
 class CityResponse(BaseModel):
     id: int
@@ -303,11 +333,12 @@ def create_city(city: CityCreate, session: Session = Depends(get_session)):
 
     # 2. Dynamic Database Provisioning
     db_name = f"city_{db_region.id}"
+    db_host = city.db_host or os.environ.get("DB_HOST", "host.docker.internal")
     try:
-        create_database_and_apply_ddl(db_name)
-        print(f"[DB] Provisioned database {db_name} and applied DDL.")
+        create_database_and_apply_ddl(db_name, db_host, db_region.id, city.name)
+        print(f"[DB] Provisioned database {db_name} on {db_host} and applied DDL.")
     except Exception as e:
-        print(f"[DB] Error provisioning database {db_name}: {e}")
+        print(f"[DB] Error provisioning database {db_name} on {db_host}: {e}")
 
     # 3. Dynamic Kubernetes Provisioning
     namespace_name = f"city-{db_region.id}-{slugify(city.name)}"
@@ -333,7 +364,7 @@ def create_city(city: CityCreate, session: Session = Depends(get_session)):
 
         # Create ConfigMap 'app-config' in the new namespace
         cm_data = {
-            "DB_HOST": os.environ.get("DB_HOST", "host.docker.internal"),
+            "DB_HOST": db_host,
             "DB_PORT": os.environ.get("DB_PORT", "5432"),
             "DB_NAME": db_name,
             "AWS_DEFAULT_REGION": os.environ.get("AWS_DEFAULT_REGION", "us-east-1"),
@@ -343,8 +374,8 @@ def create_city(city: CityCreate, session: Session = Depends(get_session)):
             "CITY_NAME": city.name,
             # Limit pool size per replica to avoid saturating RDS db.t3.micro
             # (max ~85 connections). With 3 replicas × 3 services × (5+5) = 90 max.
-            "DB_POOL_SIZE": os.environ.get("DB_POOL_SIZE", "4"),
-            "DB_MAX_OVERFLOW": os.environ.get("DB_MAX_OVERFLOW", "2"),
+            "DB_POOL_SIZE": os.environ.get("DB_POOL_SIZE", "10"),
+            "DB_MAX_OVERFLOW": os.environ.get("DB_MAX_OVERFLOW", "10"),
             "DB_POOL_TIMEOUT": os.environ.get("DB_POOL_TIMEOUT", "30"),
             # S3 bucket for OSMnx graph cache — without this, matching re-downloads
             # the graph from OpenStreetMap on every pod restart (1-2 min cold start).

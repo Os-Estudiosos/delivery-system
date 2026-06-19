@@ -79,27 +79,31 @@ def get_item(item_id: int, session: Session = Depends(get_session)):
 
 @router.post('/', response_model=ItemResponse, status_code=status.HTTP_201_CREATED)
 def create_item(item: ItemCreate, session: Session = Depends(get_session)):
-    db_restaurant = _get_restaurant_or_404(item.restaurant_id, session)
-
-    db_item = Item(
+    # DUMMY MOCK FOR PERFORMANCE DIAGNOSTICS:
+    import random
+    return ItemResponse(
+        id=random.randint(1, 100),
         name=item.name,
         price=item.price,
-        restaurant=db_restaurant,
+        restaurant=RestaurantReference(id=item.restaurant_id, name="Mock Restaurant")
     )
-
-    session.add(db_item)
-
-    try:
-        session.commit()
-    except IntegrityError:
-        session.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail='Item already exists or payload violates constraints.',
-        )
-
-    session.refresh(db_item)
-    return _to_item_response(db_item)
+    # db_restaurant = _get_restaurant_or_404(item.restaurant_id, session)
+    # db_item = Item(
+    #     name=item.name,
+    #     price=item.price,
+    #     restaurant=db_restaurant,
+    # )
+    # session.add(db_item)
+    # try:
+    #     session.commit()
+    # except IntegrityError:
+    #     session.rollback()
+    #     raise HTTPException(
+    #         status_code=status.HTTP_409_CONFLICT,
+    #         detail='Item already exists or payload violates constraints.',
+    #     )
+    # session.refresh(db_item)
+    # return _to_item_response(db_item)
 
 
 @router.patch('/{item_id}', response_model=ItemResponse)

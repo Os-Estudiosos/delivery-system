@@ -8,8 +8,8 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: clients
-  minReplicas: 2
-  maxReplicas: 10
+  minReplicas: 1
+  maxReplicas: 5
   metrics:
     - type: Resource
       resource:
@@ -28,8 +28,8 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: couriers
-  minReplicas: 2
-  maxReplicas: 10
+  minReplicas: 7
+  maxReplicas: 100
   metrics:
     - type: Resource
       resource:
@@ -49,7 +49,7 @@ spec:
     kind: Deployment
     name: matching
   minReplicas: 2
-  maxReplicas: 10
+  maxReplicas: 50
   metrics:
     - type: Resource
       resource:
@@ -68,8 +68,8 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: orders
-  minReplicas: 2
-  maxReplicas: 10
+  minReplicas: 7
+  maxReplicas: 100
   metrics:
     - type: Resource
       resource:
@@ -88,8 +88,8 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: restaurants
-  minReplicas: 2
-  maxReplicas: 10
+  minReplicas: 1
+  maxReplicas: 5
   metrics:
     - type: Resource
       resource:
@@ -108,8 +108,8 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: region
-  minReplicas: 2
-  maxReplicas: 10
+  minReplicas: 1
+  maxReplicas: 5
   metrics:
     - type: Resource
       resource:

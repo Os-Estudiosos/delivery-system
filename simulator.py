@@ -202,46 +202,54 @@ async def fetch(session, method, url, payload=None):
     headers = {"Host": virtual_host} if virtual_host else {}
     start_time = time.perf_counter()
     data = None
-    try:
-        response = None
-        if method == 'POST':
-            response = session.post(resolved_url, json=payload, headers=headers)
-        elif method == 'PUT':
-            response = session.put(resolved_url, json=payload, headers=headers)
-        elif method == 'PATCH':
-            response = session.patch(resolved_url, json=payload, headers=headers)
-        elif method == 'GET':
-            response = session.get(resolved_url, headers=headers)
+    status = 0
+    
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = None
+            if method == 'POST':
+                response = session.post(resolved_url, json=payload, headers=headers)
+            elif method == 'PUT':
+                response = session.put(resolved_url, json=payload, headers=headers)
+            elif method == 'PATCH':
+                response = session.patch(resolved_url, json=payload, headers=headers)
+            elif method == 'GET':
+                response = session.get(resolved_url, headers=headers)
 
-        if response is None:
-            raise ValueError(f"Unsupported method: {method}")
+            if response is None:
+                raise ValueError(f"Unsupported method: {method}")
 
-        async with response as req_response:
-            raw = await req_response.text()
-            status = req_response.status
+            async with response as req_response:
+                raw = await req_response.text()
+                status = req_response.status
 
-            if raw:
-                try:
-                    data = json.loads(raw)
-                except json.JSONDecodeError:
-                    data = None
-    except Exception as e:
-        error_msg = str(e)
-        if not error_msg:
-            error_msg = "Timeout (O serviço demorou mais que o limite para responder)"
-        
-        # Avoid printing thousands of errors
-        if not hasattr(fetch, "error_count"):
-            fetch.error_count = 0
-        fetch.error_count += 1
-        
-        if fetch.error_count <= 5:
-            print(f"\n[ERRO DE CONEXÃO REAL] Falha ao tentar {method} em {resolved_url} (Host: {virtual_host}) -> {error_msg}")
-        elif fetch.error_count == 6:
-            print(f"\n[ERRO DE CONEXÃO REAL] (Silenciando próximos erros idênticos de timeout/conexão para não floodar a tela...)")
+                if raw:
+                    try:
+                        data = json.loads(raw)
+                    except json.JSONDecodeError:
+                        data = None
+            break  # Sucesso, sai do loop de retries
+        except Exception as e:
+            error_msg = str(e)
+            if not error_msg:
+                error_msg = "Timeout (O serviço demorou mais que o limite para responder)"
             
-        status = 0
-        data = None
+            # Se for a última tentativa, registra o erro e define status=0
+            if attempt == max_retries - 1:
+                if not hasattr(fetch, "error_count"):
+                    fetch.error_count = 0
+                fetch.error_count += 1
+                
+                if fetch.error_count <= 5:
+                    print(f"\n[ERRO DE CONEXÃO REAL] Falha definitiva após {max_retries} tentativas em {method} em {resolved_url} (Host: {virtual_host}) -> {error_msg}")
+                elif fetch.error_count == 6:
+                    print(f"\n[ERRO DE CONEXÃO REAL] (Silenciando próximos erros idênticos de timeout/conexão para não floodar a tela...)")
+                status = 0
+                data = None
+            else:
+                # Espera curta antes de retentar (0.1s, 0.2s)
+                await asyncio.sleep(0.1 * (attempt + 1))
 
     end_time = time.perf_counter()
     latency_ms = (end_time - start_time) * 1000
@@ -454,16 +462,10 @@ async def simulate_courier_movement(session, courier_id, delivery_id, city_lat: 
 
 
 async def _find_delivery_by_order_id(session, order_id: int):
-    status_code, deliveries = await fetch(session, 'GET', f"{BASE_URL}/delivery/")
-    if status_code not in (200, 201) or not isinstance(deliveries, list):
+    status_code, deliveries = await fetch(session, 'GET', f"{BASE_URL}/delivery/?order_id={order_id}")
+    if status_code not in (200, 201) or not isinstance(deliveries, list) or not deliveries:
         return None
-
-    for delivery in deliveries:
-        order_ref = delivery.get("order", {})
-        if order_ref.get("id") == order_id:
-            return delivery
-
-    return None
+    return deliveries[0]
 
 
 async def _find_any_courier_id(session):
@@ -611,63 +613,64 @@ async def worker(name, session, queue, seed_ids, stats, debug=False):
         except asyncio.CancelledError:
             break
 
-async def run_load_test(rps, duration, seed_ids, debug_first=False):
+async def run_load_test(session, rps, duration, seed_ids, debug_first=False):
     """Orquestra o ataque com a taxa de RPS desejada."""
     print(f"\nIniciando teste de carga: {rps} RPS por {duration} segundos...")
     latencies.clear()
     
-    connector = aiohttp.TCPConnector(limit=0, resolver=LocalResolver()) # Remove limite de conexões e resolve *.local
-    timeout = aiohttp.ClientTimeout(total=15)
-    async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
-        queue = asyncio.Queue()
-        stats = {"orders_completed": 0, "orders_scheduled": 0}
+    queue = asyncio.Queue()
+    stats = {"orders_completed": 0, "orders_scheduled": 0}
+    
+    # Cria workers para processar a carga. Usamos uma quantidade suficiente de workers para não gargalar concorrentemente
+    workers = [asyncio.create_task(worker(f'w-{i}', session, queue, seed_ids, stats, debug=(i==0 and debug_first))) for i in range(max(rps * 3, 100))]
+    
+    start_time = time.time()
+    scheduled_count = 0
+    while time.time() - start_time < duration:
+        now = time.time()
+        elapsed = now - start_time
+        # Calcula quantos requests deveriam ter sido agendados até o momento atual
+        expected = int(elapsed * rps)
+        while scheduled_count < expected:
+            queue.put_nowait(1)
+            stats["orders_scheduled"] += 1
+            scheduled_count += 1
+            # Only debug first request
+            if debug_first and scheduled_count == 1:
+                debug_first = False
+        await asyncio.sleep(0.01) # Sleep curto para distribuir requisições uniformemente
         
-        # Cria workers para processar a carga
-        workers = [asyncio.create_task(worker(f'w-{i}', session, queue, seed_ids, stats, debug=(i==0 and debug_first))) for i in range(rps * 2)]
-        
-        start_time = time.time()
-        request_count = 0
-        while time.time() - start_time < duration:
-            for _ in range(rps):
-                queue.put_nowait(1)
-                stats["orders_scheduled"] += 1
-                request_count += 1
-                # Only debug first request
-                if debug_first and request_count == 1:
-                    debug_first = False
-            await asyncio.sleep(1) # Aguarda 1 segundo e injeta mais carga
-            
-        # Ignora o backlog da fila para terminar exatamente no tempo previsto.
-        # Um stress test real (ex: wrk/hey) não espera a fila esvaziar.
-        
-        elapsed_seconds = max(time.time() - start_time, 1e-9)
-        
-        for w in workers:
-            w.cancel()
-        await asyncio.gather(*workers, return_exceptions=True)
+    # Ignora o backlog da fila para terminar exatamente no tempo previsto.
+    # Um stress test real (ex: wrk/hey) não espera a fila esvaziar.
+    
+    elapsed_seconds = max(time.time() - start_time, 1e-9)
+    
+    for w in workers:
+        w.cancel()
+    await asyncio.gather(*workers, return_exceptions=True)
 
-        current_bg_tasks = list(background_tasks)
-        for t in current_bg_tasks:
-            t.cancel()
-        if current_bg_tasks:
-            await asyncio.gather(*current_bg_tasks, return_exceptions=True)
-        background_tasks.clear()
+    current_bg_tasks = list(background_tasks)
+    for t in current_bg_tasks:
+        t.cancel()
+    if current_bg_tasks:
+        await asyncio.gather(*current_bg_tasks, return_exceptions=True)
+    background_tasks.clear()
 
-        if latencies:
-            p95 = statistics.quantiles(latencies, n=100)[94]
-            avg = statistics.mean(latencies)
-            print(f"Resultados para {rps} RPS:")
-            print(f"Total de Requisições: {len(latencies)}")
-            print(f"Latência Média: {avg:.2f} ms")
-            print(f"Latência P95: {p95:.2f} ms")
-            print(f"Pedidos agendados: {stats['orders_scheduled']}")
-            print(f"Pedidos completos: {stats['orders_completed']}")
-            print(f"Throughput efetivo de pedidos: {stats['orders_completed'] / elapsed_seconds:.2f} pedidos/s")
-            
-            if p95 < 500:
-                print("SUCESSO: P95 abaixo de 500ms!")
-            else:
-                print("AVISO: P95 acima de 500ms. ECS pode estar precisando de mais containers.")
+    if latencies:
+        p95 = statistics.quantiles(latencies, n=100)[94]
+        avg = statistics.mean(latencies)
+        print(f"Resultados para {rps} RPS:")
+        print(f"Total de Requisições: {len(latencies)}")
+        print(f"Latência Média: {avg:.2f} ms")
+        print(f"Latência P95: {p95:.2f} ms")
+        print(f"Pedidos agendados: {stats['orders_scheduled']}")
+        print(f"Pedidos completos: {stats['orders_completed']}")
+        print(f"Throughput efetivo de pedidos: {stats['orders_completed'] / elapsed_seconds:.2f} pedidos/s")
+        
+        if p95 < 500:
+            print("SUCESSO: P95 abaixo de 500ms!")
+        else:
+            print("AVISO: P95 acima de 500ms. ECS pode estar precisando de mais containers.")
 
 async def main(url: str, rps: int = None, duration: int = None):
     global BASE_URL, CITY_NAMESPACE
@@ -675,62 +678,63 @@ async def main(url: str, rps: int = None, duration: int = None):
     CITY_NAMESPACE = os.environ.get("CITY_NAMESPACE", "")
 
     print("--- DijkFood Load Simulator ---")
-    connector = aiohttp.TCPConnector(limit=0, resolver=LocalResolver())
+    connector = aiohttp.TCPConnector(limit=300, resolver=LocalResolver())
     timeout = aiohttp.ClientTimeout(total=15)
     async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
         seed_ids = await seed_data(session)
-    is_quick = os.environ.get("QUICK_TEST") == "true"
-    
-    if is_quick or rps is not None or duration is not None:
-        target_rps = rps if rps is not None else 10
-        target_duration = duration if duration is not None else 15
-        print(f"[Quick/Custom Mode] Running only a single load test: {target_rps} RPS for {target_duration} seconds.")
-        await run_load_test(rps=target_rps, duration=target_duration, seed_ids=seed_ids, debug_first=False)
-        return
+        is_quick = os.environ.get("QUICK_TEST") == "true"
+        
+        if is_quick or rps is not None or duration is not None:
+            target_rps = rps if rps is not None else 10
+            target_duration = duration if duration is not None else 15
+            print(f"[Quick/Custom Mode] Running only a single load test: {target_rps} RPS for {target_duration} seconds.")
+            await run_load_test(session, rps=target_rps, duration=target_duration, seed_ids=seed_ids, debug_first=False)
+            return
 
-    # Cenário 1: Operação Normal (silenciado para não floodar)
-    await run_load_test(rps=10, duration=10, seed_ids=seed_ids, debug_first=False)
-    
-    # Cenário 2: Pico (Almoço/Jantar)
-    print("\nIniciando teste de pico intermediário: 50 RPS por 180 segundos (3 Minutos)...")
-    await run_load_test(rps=50, duration=180, seed_ids=seed_ids, debug_first=False)
-    
-    # Warm-up (100 RPS)
-    print("\n[Warm-up] Subindo para 100 RPS por 120 segundos para permitir que o HPA e o Cluster Autoscaler preparem as EC2s...")
-    await run_load_test(rps=100, duration=120, seed_ids=seed_ids, debug_first=False)
+        # Cenário 1: Operação Normal (silenciado para não floodar)
+        await run_load_test(session, rps=10, duration=10, seed_ids=seed_ids, debug_first=False)
+        
+        # Cenário 2: Pico (Almoço/Jantar)
+        print("\nIniciando teste de pico intermediário: 50 RPS por 180 segundos (3 Minutos)...")
+        await run_load_test(session, rps=50, duration=180, seed_ids=seed_ids, debug_first=False)
+        
+        # Warm-up (100 RPS)
+        print("\n[Warm-up] Subindo para 100 RPS por 120 segundos para permitir que o HPA e o Cluster Autoscaler preparem as EC2s...")
+        await run_load_test(session, rps=100, duration=120, seed_ids=seed_ids, debug_first=False)
 
-    # Warm-up (150 RPS)
-    print("\n[Warm-up] Subindo para 150 RPS por 120 segundos...")
-    await run_load_test(rps=150, duration=120, seed_ids=seed_ids, debug_first=False)
+        # Warm-up (150 RPS)
+        print("\n[Warm-up] Subindo para 150 RPS por 120 segundos...")
+        await run_load_test(session, rps=150, duration=120, seed_ids=seed_ids, debug_first=False)
 
-    # Cenário 3: Evento Especial (Requisito Máximo)
-    print("\nAguardando 5s antes do teste de estresse máximo (200 RPS)...")
-    await asyncio.sleep(5)
-    
-    async def simulate_driver_influx():
-        """Simula adição repentina de motoristas (Escassez/Saturação) no meio do teste"""
-        await asyncio.sleep(15) # Espera 15s de carga rolando
-        print("\n[Simulação Regional] INJETANDO 30 NOVOS ENTREGADORES NO GRAFO PARA ALIVIAR CARGA...")
-        connector = aiohttp.TCPConnector(limit=0, resolver=LocalResolver())
-        async with aiohttp.ClientSession(connector=connector) as local_session:
+        # Cenário 3: Evento Especial (Requisito Máximo)
+        print("\nAguardando 5s antes do teste de estresse máximo (200 RPS)...")
+        await asyncio.sleep(5)
+        
+        async def simulate_driver_influx():
+            """Simula adição repentina de motoristas (Escassez/Saturação) no meio do teste"""
+            await asyncio.sleep(15) # Espera 15s de carga rolando
+            print("\n[Simulação Regional] INJETANDO 30 NOVOS ENTREGADORES NO GRAFO PARA ALIVIAR CARGA...")
             city_lat = seed_ids.get("city_lat", _FALLBACK_LAT)
             city_lon = seed_ids.get("city_lon", _FALLBACK_LON)
             region_id = seed_ids.get("region_id", 1)
+            tasks = []
             for i in range(30):
-                await fetch(local_session, "POST", f"{BASE_URL}/courier/", {
+                payload = {
                     "name": f"Rescue Driver {i}",
                     "vehicle": "MOTORCYCLE",
                     "lat": city_lat + random.uniform(-0.015, 0.015),
                     "lon": city_lon + random.uniform(-0.015, 0.015)
-                })
-        print("[Simulação Regional] 30 motoristas de resgate adicionados!")
+                }
+                tasks.append(fetch(session, "POST", f"{BASE_URL}/courier/", payload))
+            await asyncio.gather(*tasks, return_exceptions=True)
+            print("[Simulação Regional] 30 motoristas de resgate adicionados!")
 
-    influx_task = asyncio.create_task(simulate_driver_influx())
-    
-    print("\nIniciando Teste Final: 200 RPS por 180 Segundos (3 Minutos) com Cluster preparado!")
-    await run_load_test(rps=200, duration=180, seed_ids=seed_ids, debug_first=False) 
-    
-    await influx_task
+        influx_task = asyncio.create_task(simulate_driver_influx())
+        
+        print("\nIniciando Teste Final: 200 RPS por 180 Segundos (3 Minutos) com Cluster preparado!")
+        await run_load_test(session, rps=200, duration=180, seed_ids=seed_ids, debug_first=False) 
+        
+        await influx_task
 
 
 if __name__ == "__main__":

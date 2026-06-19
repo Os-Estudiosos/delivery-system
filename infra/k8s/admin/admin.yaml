@@ -43,7 +43,7 @@ metadata:
   labels:
     app: admin
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: admin
@@ -57,6 +57,9 @@ spec:
         - name: admin
           image: delivery-system/admin:latest
           imagePullPolicy: Always
+          env:
+            - name: WORKERS
+              value: "1"
           envFrom:
             - configMapRef:
                 name: app-config

@@ -32,11 +32,11 @@ variable "eks_cluster_name" {
 }
 
 variable "eks_cluster_role_arn" {
-  default = "arn:aws:iam::045437334962:role/c213967a5408241l15262584t1w045437-LabEksClusterRole-HHMppWrynLtQ"
+  default = ""
 }
 
 variable "eks_node_role_arn" {
-  default = "arn:aws:iam::045437334962:role/c213967a5408241l15262584t1w045437334-LabEksNodeRole-W5SgIzC1F0jA"
+  default = ""
 }
 
 variable "eks_attach_ecr_readonly" {

@@ -131,6 +131,7 @@ spec:
         app: cluster-autoscaler
     spec:
       serviceAccountName: cluster-autoscaler
+      priorityClassName: system-cluster-critical
       containers:
         - image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.30.0
           name: cluster-autoscaler

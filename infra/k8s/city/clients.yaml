@@ -19,6 +19,9 @@ spec:
         - name: clients
           image: delivery-system/clients:latest
           imagePullPolicy: Always
+          env:
+            - name: WORKERS
+              value: "1"
           envFrom:
             - configMapRef:
                 name: app-config
@@ -53,6 +56,9 @@ metadata:
   namespace: city-example-namespace
   annotations:
     kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/upstream-keepalive-connections: "200"
+    nginx.ingress.kubernetes.io/upstream-keepalive-requests: "10000"
+    nginx.ingress.kubernetes.io/upstream-keepalive-timeout: "60" 
 spec:
   ingressClassName: nginx
   rules:

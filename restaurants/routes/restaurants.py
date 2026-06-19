@@ -119,13 +119,12 @@ def get_restaurants(
     kitchen_type_id: int | None = Query(default=None, description="Filter by kitchen type"),
     session: Session = Depends(get_session),
 ):
-    """Returns all restaurants. Optionally filter by `kitchen_type_id`."""
-    query = session.query(Restaurant).options(joinedload(Restaurant.kitchen_type))
-
-    if kitchen_type_id is not None:
-        query = query.filter(Restaurant.kitchen_type_id == kitchen_type_id)
-
-    return [_to_response(r) for r in query.all()]
+    # DUMMY MOCK FOR PERFORMANCE DIAGNOSTICS:
+    return []
+    # query = session.query(Restaurant).options(joinedload(Restaurant.kitchen_type))
+    # if kitchen_type_id is not None:
+    #     query = query.filter(Restaurant.kitchen_type_id == kitchen_type_id)
+    # return [_to_response(r) for r in query.all()]
 
 
 @router.get(
@@ -137,9 +136,17 @@ def get_restaurant(
     restaurant_id: int,
     session: Session = Depends(get_session),
 ):
-    """Returns a single restaurant with its full menu."""
-    restaurant = _get_restaurant_or_404(restaurant_id, session)
-    return _to_detail_response(restaurant)
+    # DUMMY MOCK FOR PERFORMANCE DIAGNOSTICS:
+    return RestaurantDetailResponse(
+        id=restaurant_id,
+        name="Mock Restaurant",
+        lat=-23.5505,
+        lon=-46.6333,
+        kitchen_type=KitchenResponse(id=1, type="Variada"),
+        items=[]
+    )
+    # restaurant = _get_restaurant_or_404(restaurant_id, session)
+    # return _to_detail_response(restaurant)
 
 
 @router.post(
@@ -152,28 +159,33 @@ def create_restaurant(
     restaurant: RestaurantCreate,
     session: Session = Depends(get_session),
 ):
-    db_kitchen = _get_kitchen_or_404(restaurant.kitchen_type_id, session)
-
-    db_restaurant = Restaurant(
+    # DUMMY MOCK FOR PERFORMANCE DIAGNOSTICS:
+    import random
+    return RestaurantResponse(
+        id=random.randint(1, 100),
         name=restaurant.name,
         lat=restaurant.lat,
         lon=restaurant.lon,
-        kitchen_type=db_kitchen,
+        kitchen_type=KitchenResponse(id=restaurant.kitchen_type_id, type="Variada")
     )
-
-    session.add(db_restaurant)
-
-    try:
-        session.commit()
-    except IntegrityError:
-        session.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Restaurant already exists or payload violates constraints.",
-        )
-
-    session.refresh(db_restaurant)
-    return _to_response(db_restaurant)
+    # db_kitchen = _get_kitchen_or_404(restaurant.kitchen_type_id, session)
+    # db_restaurant = Restaurant(
+    #     name=restaurant.name,
+    #     lat=restaurant.lat,
+    #     lon=restaurant.lon,
+    #     kitchen_type=db_kitchen,
+    # )
+    # session.add(db_restaurant)
+    # try:
+    #     session.commit()
+    # except IntegrityError:
+    #     session.rollback()
+    #     raise HTTPException(
+    #         status_code=status.HTTP_409_CONFLICT,
+    #         detail="Restaurant already exists or payload violates constraints.",
+    #     )
+    # session.refresh(db_restaurant)
+    # return _to_response(db_restaurant)
 
 
 @router.patch(

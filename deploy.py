@@ -22,16 +22,56 @@ def print_step(title):
     print(f"==================================================")
 
 
-def run_cmd(cmd, cwd=None, capture_output=True, shell=False):
+def run_cmd(cmd, cwd=None, capture_output=False, shell=False):
     """Executa um comando no shell e trata erros. Logs de sucesso silenciados."""
     print(f"⏳ [EXEC] {cmd if isinstance(cmd, str) else ' '.join(cmd)}")
     
+    # Se for o comando aws, verificamos se o ambiente virtual já possui o awscli.
+    # Se possuir, usamos o venv diretamente (não limpamos o PATH).
+    # Se não possuir, removemos o virtualenv do PATH para usar o AWS CLI global corretamente.
+    env = os.environ.copy()
+    cmd_str = cmd if isinstance(cmd, str) else " ".join(cmd)
+    if "aws" in cmd_str or "kubectl" in cmd_str:
+        # Verifica se o aws está no ambiente virtual ativo
+        venv_scripts = os.path.join(sys.prefix, "Scripts")
+        has_venv_aws = False
+        for ext in ["", ".cmd", ".exe"]:
+            if os.path.exists(os.path.join(venv_scripts, f"aws{ext}")):
+                has_venv_aws = True
+                break
+        
+        if not has_venv_aws:
+            paths = env.get("PATH", "").split(os.pathsep)
+            cleaned_paths = []
+            for p in paths:
+                if not p.strip():
+                    continue
+                p_abs = os.path.abspath(p)
+                # Remove o diretório do executável python atual e caminhos comuns de venv
+                if p_abs == os.path.abspath(os.path.dirname(sys.executable)):
+                    continue
+                if p_abs == os.path.abspath(os.path.join(sys.prefix, "Scripts")):
+                    continue
+                if p_abs == os.path.abspath(os.path.join(sys.prefix, "bin")):
+                    continue
+                p_lower = p_abs.lower()
+                if ".venv\\scripts" in p_lower or "\\venv\\scripts" in p_lower:
+                    continue
+                cleaned_paths.append(p)
+            env["PATH"] = os.pathsep.join(cleaned_paths)
+
+        # No Windows, se cmd for lista e começar com "aws", precisamos usar shell=True
+        # para que o Windows possa executar o script aws.cmd/aws.bat associado.
+        if os.name == "nt" and isinstance(cmd, list) and len(cmd) > 0 and cmd[0] == "aws":
+            shell = True
+
     res = subprocess.run(
         cmd,
         cwd=cwd,
         shell=shell or isinstance(cmd, str),
         capture_output=capture_output,
-        text=True
+        text=True,
+        env=env
     )
     if res.returncode != 0:
         print(f"\n❌ [ERRO] Falha ao executar: {cmd}")
@@ -57,6 +97,7 @@ def main():
     parser.add_argument("--only-deploy", action="store_true", help="Apenas faz o deploy sem rodar simulação ou destruir")
     parser.add_argument("--only-destroy", action="store_true", help="Apenas destroi a infraestrutura existente na AWS")
     parser.add_argument("--no-destroy", action="store_true", help="Faz o deploy e roda simulação, mas NÃO destrói no final")
+    parser.add_argument("--no-cache", action="store_true", help="Força o build das imagens Docker do zero sem usar cache")
     args = parser.parse_args()
 
     # Valida binários necessários
@@ -70,7 +111,8 @@ def main():
     try:
         account_id = subprocess.check_output(
             ["aws", "sts", "get-caller-identity", "--query", "Account", "--output", "text"],
-            text=True
+            text=True,
+            shell=os.name == "nt"
         ).strip()
         print(f"ℹ️ [AWS] Conta ativa identificada: {account_id}")
         lab_role_arn = f"arn:aws:iam::{account_id}:role/LabRole"
@@ -83,6 +125,20 @@ def main():
     # Solicita senha do banco RDS de forma segura se não fornecida
     import getpass
     db_password = os.environ.get("TF_VAR_db_password")
+    
+    prod_tfvars_path = TERRAFORM_DIR / "prod.tfvars"
+    if not db_password and prod_tfvars_path.exists():
+        content = prod_tfvars_path.read_text()
+        match = re.search(r'db_password\s*=\s*"([^"]+)"', content)
+        if match:
+            db_password = match.group(1)
+            os.environ["TF_VAR_db_password"] = db_password
+            print("ℹ️ [AWS] Senha do banco lida do arquivo prod.tfvars.")
+
+    tf_extra_args = []
+    if prod_tfvars_path.exists():
+        tf_extra_args = ["-var-file=prod.tfvars"]
+
     if not db_password and not (TERRAFORM_DIR / "terraform.tfvars").exists():
         try:
             db_password = getpass.getpass("🔑 Digite a senha desejada para o banco de dados RDS: ").strip()
@@ -99,7 +155,7 @@ def main():
     # Se a flag for apenas destruir, executa e encerra
     if args.only_destroy:
         print_step("Iniciando Destruição (Teardown) Completa na AWS")
-        run_cmd(["terraform", "destroy", "-auto-approve"], cwd=TERRAFORM_DIR)
+        run_cmd(["terraform", "destroy", "-auto-approve"] + tf_extra_args, cwd=TERRAFORM_DIR)
         print("\n✅ Teardown finalizado com sucesso!")
         return
 
@@ -107,7 +163,7 @@ def main():
         # ── PASSO 1: Terraform Provisioning ──────────────────────────
         print_step("Passo 1: Provisionando recursos na AWS com Terraform")
         run_cmd(["terraform", "init"], cwd=TERRAFORM_DIR)
-        run_cmd(["terraform", "apply", "-auto-approve"], cwd=TERRAFORM_DIR)
+        run_cmd(["terraform", "apply", "-auto-approve"] + tf_extra_args, cwd=TERRAFORM_DIR)
         
         # Obter dados de saída (ECR urls, EKS cluster name, etc.)
         tf_outputs = get_terraform_outputs()
@@ -132,11 +188,15 @@ def main():
             ecr_uri = f"{tf_outputs['account_id']}.dkr.ecr.{aws_region}.amazonaws.com/delivery-system/{svc}:latest"
             
             # Build
+            build_cmd = ["docker", "build"]
+            if args.no_cache:
+                build_cmd.append("--no-cache")
+                
             if svc == "positions":
-                run_cmd(["docker", "build", "-t", ecr_uri, "-f", "Dockerfile", "."], cwd=ROOT_DIR / "positions")
+                run_cmd(build_cmd + ["-t", ecr_uri, "-f", "Dockerfile", "."], cwd=ROOT_DIR / "positions")
             else:
                 dockerfile_path = f"{svc}/Dockerfile"
-                run_cmd(["docker", "build", "-t", ecr_uri, "-f", dockerfile_path, "."], cwd=ROOT_DIR)
+                run_cmd(build_cmd + ["-t", ecr_uri, "-f", dockerfile_path, "."], cwd=ROOT_DIR)
             
             # Push
             run_cmd(["docker", "push", ecr_uri], cwd=ROOT_DIR)
@@ -303,7 +363,7 @@ def main():
         print("[K8s] Aguardando inicialização do painel administrativo...")
         run_cmd([
             "kubectl", "wait", "--namespace", "admin-namespace",
-            "--for=condition=ready", "pod", "--selector=app=admin", "--timeout=180s"
+            "--for=condition=ready", "pod", "--selector=app=admin", "--timeout=3600s"
         ])
 
         # Instalar NGINX Ingress Controller e capturar o hostname do LoadBalancer
@@ -319,6 +379,34 @@ def main():
             "--selector=app.kubernetes.io/component=controller",
             "--timeout=180s"
         ])
+
+        # Otimizar NGINX Ingress Controller para suportar alta carga e evitar resets
+        print("[K8s] Configurando NGINX Ingress Controller para alta carga...")
+        try:
+            import json
+            configmap_patch = {
+                "data": {
+                    "keep-alive-requests": "100000",
+                    "keep-alive-timeout": "600",
+                    "upstream-keepalive-connections": "2000",
+                    "upstream-keepalive-requests": "100000",
+                    "upstream-keepalive-timeout": "600",
+                    "max-worker-connections": "65536"
+                }
+            }
+            run_cmd([
+                "kubectl", "patch", "configmap", "ingress-nginx-controller",
+                "-n", "ingress-nginx", "--type", "merge", "-p", json.dumps(configmap_patch)
+            ])
+            print("   ConfigMap 'ingress-nginx-controller' patcheado com sucesso.")
+            
+            run_cmd([
+                "kubectl", "scale", "deployment/ingress-nginx-controller",
+                "-n", "ingress-nginx", "--replicas=3"
+            ])
+            print("   Deployment 'ingress-nginx-controller' escalado para 3 réplicas.")
+        except Exception as patch_err:
+            print(f"⚠️ Erro ao otimizar NGINX Ingress: {patch_err}. Continuando...")
 
         # Aguarda o LoadBalancer receber um hostname externo (pode demorar até 2 minutos na AWS)
         print("[K8s] Aguardando hostname externo do LoadBalancer do NGINX Ingress...")
@@ -342,6 +430,13 @@ def main():
 
         # Registra cidades na API
         cities_to_register = ["São Paulo, Brazil", "Russas, Ceará, Brazil"]
+        # Map cities to their corresponding RDS identifiers in Terraform outputs
+        city_rds_map = {
+            "São Paulo, Brazil": "city-1",
+            "Russas, Ceará, Brazil": "city-2"
+        }
+        rds_addresses = tf_outputs.get("rds_addresses", {})
+        
         namespaces = []
         try:
             # We port-forward the admin service port 4000 to talk to the API
@@ -352,7 +447,17 @@ def main():
             for city in cities_to_register:
                 ns_name = None
                 try:
-                    city_payload = json.dumps({"name": city}).encode("utf-8")
+                    rds_key = city_rds_map.get(city)
+                    db_host = rds_addresses.get(rds_key) if rds_key else None
+                    
+                    payload = {"name": city}
+                    if db_host:
+                        payload["db_host"] = db_host
+                        print(f"[HTTP] Mapeando cidade '{city}' para RDS {rds_key} ({db_host})")
+                    else:
+                        print(f"[HTTP] Cidade '{city}' usará RDS padrão")
+                        
+                    city_payload = json.dumps(payload).encode("utf-8")
                     req = urllib.request.Request(
                         "http://localhost:4000/city",
                         data=city_payload,
@@ -393,22 +498,64 @@ def main():
         Path("deploy_context.json").write_text(json.dumps(context_data, indent=2))
         print(f"deploy_context.json atualizado: alb_dns={ingress_hostname}, city_namespace={namespaces[-1]}")
 
+        ecr_registry = f"{tf_outputs['account_id']}.dkr.ecr.{aws_region}.amazonaws.com"
         for namespace_name in namespaces:
+            print(f"[K8s] Atualizando manifestos e secrets no namespace {namespace_name}...")
+            
+            # Recria a secret app-secret no namespace para garantir credenciais sincronizadas
+            subprocess.run(["kubectl", "delete", "secret", "app-secret", "-n", namespace_name], capture_output=True)
+            secret_cmd_city = [
+                "kubectl", "create", "secret", "generic", "app-secret",
+                "-n", namespace_name,
+                "--from-literal=DB_USER=dijkfood",
+                f"--from-literal=DB_PASSWORD={db_password}"
+            ]
+            for k, v in aws_creds.items():
+                secret_cmd_city.append(f"--from-literal={k}={v}")
+            run_cmd(secret_cmd_city)
+
+            manifest_files = [
+                "clients.yaml",
+                "couriers.yaml",
+                "matching.yaml",
+                "orders.yaml",
+                "restaurants.yaml",
+                "region.yaml",
+                "service-prod.yaml",
+                "hpas.yaml"
+            ]
+            for filename in manifest_files:
+                yaml_file = K8S_DIR / "city" / filename
+                if not yaml_file.exists():
+                    print(f"⚠️ Manifesto não encontrado: {yaml_file}")
+                    continue
+                content = yaml_file.read_text()
+                content = content.replace("namespace: city-example-namespace", f"namespace: {namespace_name}")
+                content = content.replace("city-example-namespace.local", f"{namespace_name}.local")
+                if ecr_registry:
+                    content = content.replace("image: delivery-system/", f"image: {ecr_registry}/delivery-system/")
+                
+                p = subprocess.Popen(["kubectl", "apply", "-f", "-"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                stdout, stderr = p.communicate(input=content)
+                if p.returncode != 0:
+                    print(f"⚠️ Erro ao aplicar {filename} no namespace {namespace_name}: {stderr}")
+            
             print(f"[K8s] Reiniciando deployments no namespace {namespace_name}...")
             for deploy_name in ["clients", "couriers", "matching", "orders", "restaurants", "region"]:
                 subprocess.run(["kubectl", "rollout", "restart", f"deployment/{deploy_name}", "-n", namespace_name])
 
-        # Aguardar um momento para os pods começarem a subir nos namespaces
-        print(f"[K8s] Aguardando inicialização do roteador (matching) nos namespaces...")
-        time.sleep(10)
         for namespace_name in namespaces:
-            try:
-                run_cmd([
-                    "kubectl", "wait", "--namespace", namespace_name, 
-                    "--for=condition=ready", "pod", "--selector=app=matching", "--timeout=180s"
-                ])
-            except Exception as wait_err:
-                print(f"⚠️ Aviso ao aguardar pod matching em {namespace_name}: {wait_err}. Continuando...")
+            print(f"[K8s] Aguardando estabilização completa dos deployments em {namespace_name}...")
+            for deploy_name in ["clients", "couriers", "matching", "orders", "restaurants", "region"]:
+                try:
+                    run_cmd([
+                        "kubectl", "rollout", "status",
+                        f"deployment/{deploy_name}",
+                        "-n", namespace_name,
+                        "--timeout=300s"
+                    ])
+                except Exception as wait_err:
+                    print(f"⚠️ Aviso ao aguardar rollout de {deploy_name} em {namespace_name}: {wait_err}. Continuando...")
 
         print("\n✅ Deploy concluído com sucesso!")
         if args.only_deploy:
@@ -552,7 +699,7 @@ print(f"Formatados {{files_processed}} arquivos com sucesso!")
     # ── PASSO 5: Teardown Automático (Final) ────────────────────────
     if not args.no_destroy:
         print_step("Passo 5: Destruindo recursos (Teardown) para economizar custos")
-        run_cmd(["terraform", "destroy", "-auto-approve"], cwd=TERRAFORM_DIR)
+        run_cmd(["terraform", "destroy", "-auto-approve"] + tf_extra_args, cwd=TERRAFORM_DIR)
         print("\n✅ Infraestrutura AWS desmontada com sucesso!")
     else:
         print("\n⚠️ Infraestrutura preservada para fins de demonstração/depuração.")

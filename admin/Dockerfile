@@ -26,4 +26,4 @@ COPY admin/ .
 # Copy Kubernetes city manifests so they can be templated and deployed
 COPY infra/k8s/city/ ./infra/k8s/city/
 
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT}"]
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT} --workers ${WORKERS:-4}"]

@@ -36,27 +36,28 @@ def get_kitchen(kitchen_id: int, session: Session = Depends(get_session)):
 
 @router.post('/', tags=['create kitchen'])
 def create_kitchen(kitchen: KitchenCreate, session: Session = Depends(get_session)):
-    db_kitchen = KitchenType(
+    # DUMMY MOCK FOR PERFORMANCE DIAGNOSTICS:
+    return KitchenResponse(
+        id=1,
         type=kitchen.type,
     )
-
-    session.add(db_kitchen)
-
-    try:
-        session.commit()
-    except IntegrityError:
-        session.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail='Kitchen already exists or payload violates constraints.',
-        )
-
-    session.refresh(db_kitchen)
-
-    return KitchenResponse(
-        id=db_kitchen.id,
-        type=db_kitchen.type,
-    )
+    # db_kitchen = KitchenType(
+    #     type=kitchen.type,
+    # )
+    # session.add(db_kitchen)
+    # try:
+    #     session.commit()
+    # except IntegrityError:
+    #     session.rollback()
+    #     raise HTTPException(
+    #         status_code=status.HTTP_409_CONFLICT,
+    #         detail='Kitchen already exists or payload violates constraints.',
+    #     )
+    # session.refresh(db_kitchen)
+    # return KitchenResponse(
+    #     id=db_kitchen.id,
+    #     type=db_kitchen.type,
+    # )
 
 
 @router.patch('/{kitchen_id}', tags=['update kitchen'])

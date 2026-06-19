@@ -46,8 +46,8 @@ module "eks" {
 
   aws_region           = var.aws_region
   eks_cluster_name     = var.eks_cluster_name
-  eks_cluster_role_arn = var.eks_cluster_role_arn
-  eks_node_role_arn    = var.eks_node_role_arn
+  eks_cluster_role_arn = var.eks_cluster_role_arn != "" ? var.eks_cluster_role_arn : "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/LabRole"
+  eks_node_role_arn    = var.eks_node_role_arn != "" ? var.eks_node_role_arn : "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/LabRole"
   common_tags          = local.common_tags
 }
 
@@ -92,7 +92,11 @@ output "eks_cluster_name" {
 }
 
 output "rds_address" {
-  value = module.rds.rds_address
+  value = module.rds.rds_addresses["admin"]
+}
+
+output "rds_addresses" {
+  value = module.rds.rds_addresses
 }
 
 output "assets_bucket_name" {

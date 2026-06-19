@@ -90,7 +90,8 @@ CREATE TABLE IF NOT EXISTS courier (
     name      VARCHAR(255)     NOT NULL,
     vehicle   vehicle_type     NOT NULL,
     lat       DOUBLE PRECISION NOT NULL,
-    lon       DOUBLE PRECISION NOT NULL
+    lon       DOUBLE PRECISION NOT NULL,
+    available BOOLEAN          NOT NULL DEFAULT TRUE
 );
 
 -- -----------------------------------------------------------------

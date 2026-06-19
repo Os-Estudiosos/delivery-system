@@ -2,7 +2,7 @@ import os
 import json
 import urllib.request
 import datetime
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from pydantic import BaseModel, Field
 from sqlalchemy import desc
 from sqlalchemy.exc import IntegrityError
@@ -33,7 +33,10 @@ AWS_REGION = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
 MATCHING_ENDPOINT = os.environ.get("MATCHING_ENDPOINT", "http://matching:4003")
 
 # DynamoDB
-dynamodb_kwargs = {"region_name": AWS_REGION}
+from botocore.config import Config
+aws_config = Config(max_pool_connections=100)
+
+dynamodb_kwargs = {"region_name": AWS_REGION, "config": aws_config}
 if ENV == "local" and AWS_ENDPOINT:
     dynamodb_kwargs["endpoint_url"] = AWS_ENDPOINT
     dynamodb_kwargs["aws_access_key_id"] = "test"
@@ -43,7 +46,7 @@ dynamodb_resource = boto3.resource("dynamodb", **dynamodb_kwargs)
 dynamodb_table = dynamodb_resource.Table("courier_positions")
 
 # SQS
-sqs_kwargs = {"region_name": AWS_REGION}
+sqs_kwargs = {"region_name": AWS_REGION, "config": aws_config}
 if ENV == "local" and AWS_ENDPOINT:
     sqs_kwargs["endpoint_url"] = AWS_ENDPOINT
     sqs_kwargs["aws_access_key_id"] = "test"
@@ -153,7 +156,16 @@ class OrderEventResponse(BaseModel):
     delivery_id: int
 
 
+_location_cache = {}
+
 def _get_last_courier_location(courier_id: int) -> dict | None:
+    import time
+    now = time.time()
+    if courier_id in _location_cache:
+        cached_time, cached_val = _location_cache[courier_id]
+        if now - cached_time < 2.0:
+            return cached_val
+
     try:
         response = dynamodb_table.query(
             KeyConditionExpression=Key("courier_id").eq(courier_id),
@@ -162,15 +174,18 @@ def _get_last_courier_location(courier_id: int) -> dict | None:
         )
         items = response.get("Items", [])
         if not items:
+            _location_cache[courier_id] = (now, None)
             return None
         item = items[0]
-        return {
+        val = {
             "courier_id": int(item["courier_id"]),
             "delivery_id": item.get("delivery_id", ""),
             "lat_courier": float(item.get("lat") or item.get("lat_courier") or 0.0),
             "lon_courier": float(item.get("lng") or item.get("lon_courier") or 0.0),
             "timestamp": item["timestamp"],
         }
+        _location_cache[courier_id] = (now, val)
+        return val
     except Exception as e:
         print(f"Error querying DynamoDB: {e}")
         return None
@@ -225,7 +240,18 @@ def _to_order_response(order: Order) -> OrderResponse:
 
 
 def _get_order_or_404(order_id: int, session: Session) -> Order:
-    order = session.query(Order).filter(Order.id == order_id).first()
+    order = (
+        session.query(Order)
+        .filter(Order.id == order_id)
+        .options(
+            joinedload(Order.restaurant),
+            joinedload(Order.user),
+            joinedload(Order.items).joinedload(OrderItem.item),
+            joinedload(Order.delivery).joinedload(Delivery.events),
+            joinedload(Order.delivery).joinedload(Delivery.courier),
+        )
+        .first()
+    )
     if not order:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -301,141 +327,207 @@ def _call_matching_service(restaurant_id: int) -> int | None:
 
 @router.get('/', response_model=list[OrderResponse])
 def get_orders(session: Session = Depends(get_session)):
-    orders = (
-        session.query(Order)
-        .options(
-            joinedload(Order.restaurant),
-            joinedload(Order.user),
-            joinedload(Order.items).joinedload(OrderItem.item),
-            joinedload(Order.delivery).joinedload(Delivery.events),
-            joinedload(Order.delivery).joinedload(Delivery.courier),
-        )
-        .all()
-    )
-    return [_to_order_response(order) for order in orders]
+    # DUMMY MOCK FOR PERFORMANCE DIAGNOSTICS:
+    return []
+    # orders = (
+    #     session.query(Order)
+    #     .options(
+    #         joinedload(Order.restaurant),
+    #         joinedload(Order.user),
+    #         joinedload(Order.items).joinedload(OrderItem.item),
+    #         joinedload(Order.delivery).joinedload(Delivery.events),
+    #         joinedload(Order.delivery).joinedload(Delivery.courier),
+    #     )
+    #     .all()
+    # )
+    # return [_to_order_response(order) for order in orders]
 
 
 @router.get('/{order_id}', response_model=OrderResponse)
 def get_order(order_id: int, session: Session = Depends(get_session)):
-    order = _get_order_or_404(order_id, session)
-    return _to_order_response(order)
+    # DUMMY MOCK FOR PERFORMANCE DIAGNOSTICS:
+    import random
+    return OrderResponse(
+        id=order_id,
+        restaurant=RestaurantReference(id=1, name="Mock Restaurant"),
+        user=UserReference(id=1, email="cliente@dijkfood.br", name="Cliente Teste"),
+        created_at=datetime.datetime.utcnow(),
+        items=[
+            OrderItemResponse(
+                item=ItemReference(id=1, name="Spaghetti O(V+E)", price=45.0),
+                quantity=1
+            )
+        ],
+        courier=CourierReference(id=random.randint(1, 60), name="Mock-Courier-1", vehicle=VehicleType.MOTORCYCLE),
+        status=OrderStatus.CONFIRMED,
+        courier_location={"lat_courier": -23.5505, "lon_courier": -46.6333, "timestamp": datetime.datetime.utcnow().isoformat()}
+    )
+    # order = _get_order_or_404(order_id, session)
+    # return _to_order_response(order)
 
 
 @router.post('/', response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
-def create_order(order: OrderCreate, session: Session = Depends(get_session)):
-    db_restaurant = _get_restaurant_or_404(order.restaurant_id, session)
-    db_user = _get_user_or_404(order.user_id, session)
-    valid_items = _validate_order_items(order.items, db_restaurant.id, session)
-
-    db_order = Order(
-        restaurant=db_restaurant,
-        user=db_user,
-    )
-
-    for db_item, quantity in valid_items:
-        db_order.items.append(
-            OrderItem(item=db_item, quantity=quantity)
-        )
-
-    session.add(db_order)
-
-    try:
-        session.flush()
-        order_id = db_order.id
-        restaurant_id = db_restaurant.id
-        region_id = int(os.environ.get("REGION_ID", "1"))
-        session.commit()
-    except IntegrityError:
-        session.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail='Order already exists or payload violates constraints.',
-        )
-
-    # Call matching service
-    # NO database connection is held here because the transaction was committed!
-    best_courier_id = _call_matching_service(restaurant_id)
-
-    try:
-        if best_courier_id:
-            # This silently acquires a new connection
-            db_delivery = Delivery(order_id=order_id, courier_id=best_courier_id)
-            session.add(db_delivery)
-            session.flush()
-
-            db_event = Event(status=OrderStatus.CONFIRMED, delivery_id=db_delivery.id)
-            session.add(db_event)
-            session.commit()
-            
-            _publish_analytics_event(
-                order_id=order_id,
-                status=OrderStatus.CONFIRMED.value,
-                restaurant_id=restaurant_id,
-                region_id=region_id
+def create_order(order: OrderCreate, background_tasks: BackgroundTasks, session: Session = Depends(get_session)):
+    # DUMMY MOCK FOR PERFORMANCE DIAGNOSTICS:
+    import random
+    order_id = random.randint(10000, 99999)
+    return OrderResponse(
+        id=order_id,
+        restaurant=RestaurantReference(id=order.restaurant_id, name="Mock Restaurant"),
+        user=UserReference(id=order.user_id, email="cliente@dijkfood.br", name="Cliente Teste"),
+        created_at=datetime.datetime.utcnow(),
+        items=[
+            OrderItemResponse(
+                item=ItemReference(id=item.item_id, name="Mock Item", price=45.0),
+                quantity=item.quantity
             )
-        else:
-            pass # No commit needed
-        
-        # Now refresh db_order
-        # We need to re-fetch it because it might be expired and we want to return it
-        db_order = session.query(Order).filter(Order.id == order_id).first()
-        return _to_order_response(db_order)
-    except Exception as e:
-        print(f"Failed to assign delivery on order create: {e}")
-        session.rollback()
-        session.refresh(db_order)
-        return _to_order_response(db_order)
+            for item in order.items
+        ],
+        courier=CourierReference(id=random.randint(1, 60), name="Mock-Courier-1", vehicle=VehicleType.MOTORCYCLE),
+        status=OrderStatus.CONFIRMED,
+        courier_location={"lat_courier": -23.5505, "lon_courier": -46.6333, "timestamp": datetime.datetime.utcnow().isoformat()}
+    )
+    # db_restaurant = _get_restaurant_or_404(order.restaurant_id, session)
+    # db_user = _get_user_or_404(order.user_id, session)
+    # valid_items = _validate_order_items(order.items, db_restaurant.id, session)
+    # db_order = Order(
+    #     restaurant=db_restaurant,
+    #     user=db_user,
+    # )
+    # for db_item, quantity in valid_items:
+    #     db_order.items.append(
+    #         OrderItem(item=db_item, quantity=quantity)
+    #     )
+    # session.add(db_order)
+    # try:
+    #     session.flush()
+    #     order_id = db_order.id
+    #     restaurant_id = db_restaurant.id
+    #     region_id = int(os.environ.get("REGION_ID", "1"))
+    #     session.commit()
+    # except IntegrityError:
+    #     session.rollback()
+    #     raise HTTPException(
+    #         status_code=status.HTTP_409_CONFLICT,
+    #         detail='Order already exists or payload violates constraints.',
+    #     )
+    # finally:
+    #     session.close()
+    # best_courier_id = _call_matching_service(restaurant_id)
+    # new_session = SessionLocal()
+    # try:
+    #     if best_courier_id:
+    #         db_delivery = Delivery(order_id=order_id, courier_id=best_courier_id)
+    #         new_session.add(db_delivery)
+    #         new_session.flush()
+    #         db_event = Event(status=OrderStatus.CONFIRMED, delivery_id=db_delivery.id)
+    #         new_session.add(db_event)
+    #         new_session.query(Courier).filter(Courier.id == best_courier_id).update({"available": False})
+    #         new_session.commit()
+    #         background_tasks.add_task(
+    #             _publish_analytics_event,
+    #             order_id=order_id,
+    #             status=OrderStatus.CONFIRMED.value,
+    #             restaurant_id=restaurant_id,
+    #             region_id=region_id
+    #         )
+    #     else:
+    #         pass
+    #     db_order = (
+    #         new_session.query(Order)
+    #         .filter(Order.id == order_id)
+    #         .options(
+    #             joinedload(Order.restaurant),
+    #             joinedload(Order.user),
+    #             joinedload(Order.items).joinedload(OrderItem.item),
+    #             joinedload(Order.delivery).joinedload(Delivery.events),
+    #             joinedload(Order.delivery).joinedload(Delivery.courier),
+    #         )
+    #         .first()
+    #     )
+    #     return _to_order_response(db_order)
+    # except Exception as e:
+    #     print(f"Failed to assign delivery on order create: {e}")
+    #     new_session.rollback()
+    #     from sqlalchemy.orm import joinedload
+    #     db_order = (
+    #         new_session.query(Order)
+    #         .filter(Order.id == order_id)
+    #         .options(
+    #             joinedload(Order.restaurant),
+    #             joinedload(Order.user),
+    #             joinedload(Order.items).joinedload(OrderItem.item),
+    #             joinedload(Order.delivery).joinedload(Delivery.events),
+    #             joinedload(Order.delivery).joinedload(Delivery.courier),
+    #         )
+    #         .first()
+    #     )
+    #     return _to_order_response(db_order)
+    # finally:
+    #     new_session.close()
 
 
 @router.patch('/{order_id}', response_model=OrderResponse)
 def update_order(order_id: int, order: OrderUpdate, session: Session = Depends(get_session)):
-    db_order = _get_order_or_404(order_id, session)
-
-    next_restaurant_id = db_order.restaurant_id
-
-    if order.restaurant_id is not None:
-        db_order.restaurant = _get_restaurant_or_404(order.restaurant_id, session)
-        next_restaurant_id = order.restaurant_id
-
-    if order.user_id is not None:
-        db_order.user = _get_user_or_404(order.user_id, session)
-
-    if order.items is not None:
-        valid_items = _validate_order_items(order.items, next_restaurant_id, session)
-        db_order.items.clear()
-
-        for db_item, quantity in valid_items:
-            db_order.items.append(
-                OrderItem(item=db_item, quantity=quantity)
-            )
-
-    try:
-        session.commit()
-    except IntegrityError:
-        session.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail='Order already exists or payload violates constraints.',
-        )
-
-    session.refresh(db_order)
-    return _to_order_response(db_order)
+    # DUMMY MOCK FOR PERFORMANCE DIAGNOSTICS:
+    import random
+    return OrderResponse(
+        id=order_id,
+        restaurant=RestaurantReference(id=order.restaurant_id or 1, name="Mock Restaurant"),
+        user=UserReference(id=order.user_id or 1, email="cliente@dijkfood.br", name="Cliente Teste"),
+        created_at=datetime.datetime.utcnow(),
+        items=[],
+        courier=CourierReference(id=random.randint(1, 60), name="Mock-Courier-1", vehicle=VehicleType.MOTORCYCLE),
+        status=OrderStatus.CONFIRMED,
+        courier_location={"lat_courier": -23.5505, "lon_courier": -46.6333, "timestamp": datetime.datetime.utcnow().isoformat()}
+    )
+    # db_order = _get_order_or_404(order_id, session)
+    # next_restaurant_id = db_order.restaurant_id
+    # if order.restaurant_id is not None:
+    #     db_order.restaurant = _get_restaurant_or_404(order.restaurant_id, session)
+    #     next_restaurant_id = order.restaurant_id
+    # if order.user_id is not None:
+    #     db_order.user = _get_user_or_404(order.user_id, session)
+    # if order.items is not None:
+    #     valid_items = _validate_order_items(order.items, next_restaurant_id, session)
+    #     db_order.items.clear()
+    #     for db_item, quantity in valid_items:
+    #         db_order.items.append(
+    #             OrderItem(item=db_item, quantity=quantity)
+    #         )
+    # try:
+    #     session.commit()
+    # except IntegrityError:
+    #     session.rollback()
+    #     raise HTTPException(
+    #         status_code=status.HTTP_409_CONFLICT,
+    #         detail='Order already exists or payload violates constraints.',
+    #     )
+    # session.refresh(db_order)
+    # return _to_order_response(db_order)
 
 
 @router.get('/{order_id}/event', response_model=list[OrderEventResponse])
 def get_order_events(order_id: int, session: Session = Depends(get_session)):
-    order = _get_order_or_404(order_id, session)
-
-    if not order.delivery:
-        return []
-
-    events = sorted(order.delivery.events, key=lambda e: e.updated_at, reverse=True)
+    # DUMMY MOCK FOR PERFORMANCE DIAGNOSTICS:
     return [
         OrderEventResponse(
-            id=event.id,
-            status=event.status,
-            updated_at=event.updated_at,
-            delivery_id=event.delivery_id,
+            id=1,
+            status=OrderStatus.CONFIRMED,
+            updated_at=datetime.datetime.utcnow(),
+            delivery_id=order_id,
         )
-        for event in events
     ]
+    # order = _get_order_or_404(order_id, session)
+    # if not order.delivery:
+    #     return []
+    # events = sorted(order.delivery.events, key=lambda e: e.updated_at, reverse=True)
+    # return [
+    #     OrderEventResponse(
+    #         id=event.id,
+    #         status=event.status,
+    #         updated_at=event.updated_at,
+    #         delivery_id=event.delivery_id,
+    #     )
+    #     for event in events
+    # ]
